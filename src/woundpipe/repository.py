@@ -400,6 +400,18 @@ def export_json(con: sqlite3.Connection) -> dict[str, Any]:
         )
     }
 
+    # ai summary per patient (migration 006; tolerate absence on un-migrated DBs).
+    summary_by_patient: dict[str, Any] = {}
+    if con.execute(
+        "SELECT 1 FROM pragma_table_info('pcc_patient') WHERE name = 'ai_summary'"
+    ).fetchone():
+        summary_by_patient = {
+            r["patient_id"]: r["ai_summary"]
+            for r in _rows(
+                con.execute("SELECT patient_id, ai_summary FROM pcc_patient WHERE is_current = 1")
+            )
+        }
+
     # --- assemble patients[] -------------------------------------------------
     out_patients: list[dict[str, Any]] = []
     for p in patients:
@@ -472,6 +484,7 @@ def export_json(con: sqlite3.Connection) -> dict[str, Any]:
                 "reason": p["reason"],
                 "confidence": p["confidence"],
                 "field_confidence": field_confidence,
+                "ai_summary": summary_by_patient.get(p["patient_id"]),
                 "note_text": note_text,
                 "highlights": highlights,
                 "eligibility_checks": _eligibility_checks(p),

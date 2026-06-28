@@ -62,6 +62,7 @@ export interface Patient {
   route: Route;
   confidence: number;
   field_confidence: Record<string, number>;
+  ai_summary: string | null;
   reason: string;
   note_text: string;
   highlights: Highlight[];

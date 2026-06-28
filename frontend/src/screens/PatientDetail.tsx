@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X, Check, AlertTriangle, XCircle, FileText, Users, AlertCircle } from "lucide-react";
+import { X, Check, AlertTriangle, XCircle, FileText, Users, AlertCircle, Sparkles } from "lucide-react";
 import type { Patient, CheckStatus } from "../types";
 import type { Decision } from "../data/useDecisions";
 import { RouteBadge } from "../components/ui/RouteBadge";
@@ -106,8 +106,23 @@ export function PatientDetail({
                 </button>
               </header>
 
+              {/* AI summary — the human-readable overview, shown first */}
+              <section className="mt-5 rounded-xl border border-ink/15 bg-surface p-4 shadow-glass">
+                <div className="mb-1.5 flex items-center gap-1.5">
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-ink text-white">
+                    <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">AI summary</span>
+                </div>
+                {patient.ai_summary ? (
+                  <p className="text-sm leading-relaxed text-ink">{patient.ai_summary}</p>
+                ) : (
+                  <p className="text-sm italic text-ink-faint">No summary yet for this patient.</p>
+                )}
+              </section>
+
               {/* recommendation, in plain words */}
-              <section className="mt-5 rounded-xl border border-border bg-surface-2 p-4">
+              <section className="mt-4 rounded-xl border border-border bg-surface-2 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">What the system suggests</span>
                   <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ring-1 ${ms.tone} ${ms.ring}`}>{ms.label}</span>

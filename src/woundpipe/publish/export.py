@@ -89,6 +89,7 @@ def _adapt_patient(p: dict) -> dict:
         "route": p.get("route"),
         "confidence": p.get("confidence") or 0,
         "field_confidence": p.get("field_confidence") or {},
+        "ai_summary": p.get("ai_summary"),
         "reason": p.get("reason", ""),
         "data_complete": p.get("data_complete", True),
         "failed_fetches": p.get("failed_fetches", 0),

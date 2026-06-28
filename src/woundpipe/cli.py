@@ -168,6 +168,23 @@ def route(db: str = typer.Option("data/woundpipe.db", "--db")):
 
 
 @app.command()
+def summarize(db: str = typer.Option("data/woundpipe.db", "--db"),
+              full: bool = typer.Option(False, "--full",
+                                        help="re-summarize every patient, not only those missing one")):
+    """Generate per-patient AI summaries (Claude when keyed, else data-driven)."""
+    from woundpipe.db.engine import connect
+    from woundpipe import summarize as summarizer
+    s = _settings(db)
+    con = connect(db)
+    res = summarizer.backfill(con, s, force=full)
+    con.close()
+    typer.secho(
+        f"[summarize] generated={res['generated']} (llm={res['llm']} template={res['template']})",
+        fg="green",
+    )
+
+
+@app.command()
 def publish(db: str = typer.Option("data/woundpipe.db", "--db"),
             out: str = typer.Option("data/export.json", "--out"),
             frontend: str = typer.Option("frontend/public/export.json", "--frontend")):
@@ -190,6 +207,7 @@ def run_all(db: str = typer.Option("data/woundpipe.db", "--db"),
     ingest(db=db, facilities=facilities, since=since, limit=limit)
     extract(db=db)
     route(db=db)
+    summarize(db=db, full=False)
     publish(db=db, out="data/export.json", frontend="frontend/public/export.json")
     typer.secho("[run-all] pipeline complete.", fg="green", bold=True)
 
