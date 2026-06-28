@@ -70,6 +70,29 @@ _INSERT = """INSERT INTO wound_extraction
   evidence_span_start, evidence_span_end, evidence_quote, extracted_at)
  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
 
+# The DB stage CHECK accepts only {'1','2','3','4','unstageable','DTI','N/A'}, but
+# the LLM tool schema speaks 'deep_tissue_injury'/'not_applicable'. Map every lane
+# onto the DB vocabulary so a long-form value can never trip the CHECK constraint;
+# anything unrecognized becomes NULL (fail-safe — never raise on persist).
+_STAGE_ALLOWED = {"1", "2", "3", "4", "unstageable", "DTI", "N/A"}
+_STAGE_ALIASES = {
+    "deep_tissue_injury": "DTI", "deep tissue injury": "DTI", "dti": "DTI",
+    "not_applicable": "N/A", "not applicable": "N/A", "na": "N/A", "n/a": "N/A",
+    "none": "N/A", "unstageable": "unstageable", "unstageable/unspecified": "unstageable",
+    "1": "1", "2": "2", "3": "3", "4": "4",
+    "stage 1": "1", "stage 2": "2", "stage 3": "3", "stage 4": "4",
+}
+
+
+def _norm_stage(stage) -> str | None:
+    """Coerce any lane's stage value to the DB-allowed set, else None."""
+    if stage is None:
+        return None
+    s = str(stage).strip()
+    if s in _STAGE_ALLOWED:
+        return s
+    return _STAGE_ALIASES.get(s.lower())
+
 
 def _persist(con, patient_id, source_kind, w, *, method, is_primary, note_id=None,
              assess_id=None, note_text=None, now=""):
@@ -78,7 +101,7 @@ def _persist(con, patient_id, source_kind, w, *, method, is_primary, note_id=Non
     quote = note_text[span[0]:span[1]] if (span and note_text) else None
     cur = con.execute(_INSERT, (
         patient_id, source_kind, note_id, assess_id, 1 if is_primary else 0, method,
-        w.get("wound_type"), fc.get("wound_type"), w.get("stage"), fc.get("stage"),
+        w.get("wound_type"), fc.get("wound_type"), _norm_stage(w.get("stage")), fc.get("stage"),
         w.get("location"), fc.get("location"),
         w.get("length_cm"), w.get("width_cm"), w.get("depth_cm"), fc.get("length_cm"),
         w.get("drainage"), fc.get("drainage"), w.get("overall_conf"),

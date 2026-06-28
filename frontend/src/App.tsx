@@ -47,7 +47,7 @@ export default function App() {
               <Activity className="h-[18px] w-[18px]" aria-hidden="true" />
             </span>
             <div className="flex items-baseline gap-2">
-              <span className="text-[15px] font-bold tracking-tight text-ink">woundpipe</span>
+              <span className="text-[15px] font-bold tracking-tight text-ink">Concur</span>
               <span className="hidden text-xs font-medium text-ink-faint sm:inline">Billing review</span>
             </div>
           </div>

@@ -11,6 +11,45 @@ from woundpipe.extract.regex_lane import find_wounds, collapse_dups
 from woundpipe.models import NoteFormat
 
 
+def test_norm_stage_maps_llm_vocab_to_db_enum():
+    # LLM tool schema speaks long-form; DB CHECK only accepts the short set.
+    assert engine._norm_stage("deep_tissue_injury") == "DTI"
+    assert engine._norm_stage("not_applicable") == "N/A"
+    assert engine._norm_stage("Stage 3") == "3"
+    assert engine._norm_stage("3") == "3"
+    assert engine._norm_stage("unstageable") == "unstageable"
+    assert engine._norm_stage(None) is None
+    assert engine._norm_stage("garbage") is None  # fail-safe, never violate CHECK
+
+
+def test_persist_llm_stage_does_not_violate_check_constraint():
+    """Regression: a wound with the LLM's 'deep_tissue_injury'/'not_applicable'
+    stage must persist (mapped to DTI/N/A), not raise IntegrityError."""
+    fd, path = tempfile.mkstemp(suffix=".db"); os.close(fd)
+    try:
+        con = connect(path); migrate.migrate_up(con); con.commit()
+        now = "2026-06-28T00:00:00"
+        con.execute("INSERT INTO pcc_patient (patient_id,id,facility_id,fetched_at,raw_payload)"
+                    " VALUES ('FA-001',1,101,?, '{}')", (now,))
+        con.commit()
+        # distinct source_kind per row so the dedup index doesn't collide
+        for stage_in, sk in (("deep_tissue_injury", "note"),
+                             ("not_applicable", "assessment"),
+                             ("weird-value", "diagnosis")):
+            engine._persist(con, "FA-001", sk,
+                            {"wound_type": "pressure_ulcer", "stage": stage_in},
+                            method="llm", is_primary=False, now=now)
+        con.commit()
+        stored = [r[0] for r in con.execute(
+            "SELECT stage FROM wound_extraction WHERE patient_id='FA-001' ORDER BY id")]
+        assert stored == ["DTI", "N/A", None]
+        con.close()
+    finally:
+        for ext in ("", "-wal", "-shm"):
+            try: os.remove(path + ext)
+            except OSError: pass
+
+
 def test_envive_format_and_2d_measure():
     txt = ("*Envive Care Conference Review - V 4.0\nWound Status: Pressure Ulcer to Right hip / "
            "Measures 2.9 cm x 2.8 cm / Stage: Stage 3\nDrainage present - serosanguineous, heavy.")
