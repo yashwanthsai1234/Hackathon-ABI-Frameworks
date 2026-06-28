@@ -1,137 +1,195 @@
-# ABI Frameworks Hackathon
+<div align="center">
 
-## The Challenge
+# 🩹 woundpipe
 
-You are building a data pipeline for a post-acute care company that needs to identify which patients qualify for wound care billing under Medicare Part B.
+### Wound-Care Medicare Part B Billing-Triage Pipeline
 
-Patient data lives in an EHR system called PointClickCare (PCC). Your pipeline will pull from a mock PCC API, extract clinical wound details from free-text notes and structured assessments, and produce a clean output that tells a biller which patients to act on — and why.
+**Pull messy EHR data through a 30%-failure API → extract wound clinical facts from four note formats → route every patient `auto_accept` / `flag_for_review` / `reject` with a plain-English reason — and show a biller exactly what to act on, and why.**
 
-The API is rate-limited and will occasionally refuse requests. Your pipeline must handle that gracefully.
+![status](https://img.shields.io/badge/status-MVP-0d9488) ![python](https://img.shields.io/badge/python-3.11%2B-14b8a6) ![db](https://img.shields.io/badge/store-SQLite%203.51-2dd4bf) ![frontend](https://img.shields.io/badge/ui-React%2019%20%2B%20Vite-0ea5e9) ![tests](https://img.shields.io/badge/tests-passing-22c55e) ![license](https://img.shields.io/badge/PHI-synthetic%20only-64748b)
+
+</div>
 
 ---
 
-## Background
+## ✨ Why this exists
 
-Wound care billing under Medicare Part B requires that a patient has:
+Post-acute wound care is the **highest-denial documentation problem in SNF billing** — denial rates run 25–35%, and the cause is almost never the code, it's a **missing measurement** invisible until the claim bounces. A biller manually opens hundreds of charts in PointClickCare, reads four inconsistent note formats, cross-checks coverage and diagnoses, and guesses what's billable.
 
-1. An **active wound** (pressure ulcer, diabetic foot ulcer, venous ulcer, etc.)
-2. **Active Medicare Part B coverage**
-3. Documented wound measurements (length, width, depth) and drainage level
+`woundpipe` automates the data collection and triage so the biller sees, at a glance:
 
-A biller reviews eligible patients and decides whether to submit a claim. Your job is to automate the data collection and triage steps that currently happen manually.
+> **`FA-001 · Agnes Dunbar` — `FLAG` — Depth not documented and only the note describes the wound. Confirm before billing.**
 
-**Routing decisions:**
+…and can click through to the **original note with the extracted fields highlighted in place** and a **graph of which sources agree**.
 
-| Decision | Meaning |
+The guiding principle: **flag, don't hallucinate.** We would rather route an ambiguous wound to a human than invent a depth measurement that turns into a denied claim.
+
+---
+
+## 🏛️ Architecture
+
+```mermaid
+flowchart LR
+    API[("🌐 PCC EHR API<br/>30%% 429 rate")]
+    subgraph PIPE["woundpipe — 7-stage resumable pipeline"]
+      direction LR
+      S0["S0 INGEST<br/>httpx + tenacity<br/>Retry-After · Semaphore(8)"]
+      S1["S1 RESOLVE<br/>patient_id ⇄ id<br/>HARD GATE"]
+      S2["S2 NORMALIZE<br/>active_mcb · active dx"]
+      S3["S3 SNIFF<br/>format from TEXT"]
+      S4["S4 EXTRACT<br/>regex + LLM + reconcile"]
+      S5["S5 ROUTE<br/>selective classifier"]
+      S6["S6 PUBLISH<br/>export.json"]
+      S0 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    end
+    DB[("🗄️ SQLite 3.51<br/>WAL · FTS5 · views")]
+    UI["💻 React command-center<br/>white + teal glass"]
+    API -->|fetch + resume| S0
+    S0 -.->|land raw| DB
+    S4 -.->|wound_extraction| DB
+    S5 -.->|v_patient_eligibility| DB
+    S6 --> UI
+    MAN["📊 RunManifest<br/>calls · 429s · retries · counts"]
+    PIPE -.-> MAN --> UI
+```
+
+### Data flow for one patient (`FA-001`)
+
+```mermaid
+sequenceDiagram
+    participant CLI as woundpipe run-all
+    participant API as PCC API
+    participant DB as SQLite
+    participant EX as Extract engine
+    CLI->>API: GET /pcc/patients?facility_id=101
+    API-->>CLI: 429 Retry-After:3 … retry … 200 [FA-001, id=1, MCB]
+    CLI->>DB: upsert pcc_patient (both keys)
+    CLI->>API: dx,coverage via FA-001 · notes,assessments via id=1
+    API-->>DB: raw_* rows (idempotent, checkpointed)
+    EX->>DB: read note + active L89 dx
+    Note over EX: sniff→ENVIVE · regex 2.9×2.8 depth=∅ · reconcile
+    EX->>DB: wound_extraction (dx✓ note✓ assessment✗ → conf 0.62)
+    DB-->>CLI: v_patient_eligibility → FLAG "depth missing"
+    CLI->>UI: export.json (highlights + evidence graph)
+```
+
+### The data model (two-identity trap, made first-class)
+
+```mermaid
+erDiagram
+    pcc_patient ||--o{ pcc_diagnosis : "patient_id (FA-001)"
+    pcc_patient ||--o{ pcc_coverage  : "patient_id (FA-001)"
+    pcc_patient ||--o{ progress_note : "id (1)"
+    pcc_patient ||--o{ pcc_assessment: "id (1)"
+    pcc_patient ||--o{ wound_extraction : "patient_id"
+    wound_extraction ||--o{ wound_field_evidence : "per-field spans"
+    pcc_patient {
+        text patient_id PK "FA-001 → dx, coverage"
+        int  id UK         "1 → notes, assessments"
+        int  facility_id
+    }
+    wound_extraction {
+        text source_kind "note|assessment|diagnosis"
+        int  is_primary
+        real overall_conf "from cross-source agreement"
+    }
+```
+
+> **`v_patient_eligibility`** and **`v_wound_corroboration`** are SQL **views** — the eligibility table is a *live query*, never a stale dump.
+
+---
+
+## 🔬 How it works
+
+| Concern | Approach |
 |---|---|
-| `auto_accept` | All required fields are clearly documented — safe to route to billing |
-| `flag_for_review` | Data is ambiguous or incomplete — a clinician or biller should review |
-| `reject` | Reliable extraction is not possible — do not route to billing |
+| **30% 429 API** | `httpx` + `tenacity`: honor `Retry-After` on 429, exp+jitter on 500/timeout, **422 fail-fast**; bounded `Semaphore(8)` with the permit **held across retry sleeps** (anti-storm); every call checkpointed in `fetch_log` → crash at call 700 resumes only the remaining 500. |
+| **Two patient IDs** | `patient_id` (`FA-001`) keys diagnoses/coverage; integer `id` keys notes/assessments. Resolved once in a **hard gate** before any fan-out — wrong-key 422s are structurally impossible. |
+| **4 messy note formats** | Format detected from the **text**, not the (misleading) `note_type`. **Regex owns measurements** (it returns a literal substring or null — never invents a number); an **LLM lane** (Claude, optional) owns Envive prose comprehension and multi-wound primary selection, behind a **verbatim-span gate** that drops any hallucinated measurement. |
+| **Trust / confidence** | Not the LLM's self-report. Confidence = **cross-source agreement**: when the ICD-10 diagnosis, the note, and the assessment describe the *same* wound, confidence is high. This is the backbone of both the routing decision **and** the evidence-graph visual. |
+| **The decision** | A glass-box **selective classifier** with cost-asymmetric thresholds (Chow): `auto_accept` only when complete **and** corroborated; everything ambiguous routes to a **wide `flag` region**; `reject` for not-MCB / no-wound / unparseable. Realized as the `v_patient_eligibility` SQL view, with a Python oracle that CI asserts is equivalent. |
+| **Schema management** | Versioned `migrations/NNN_*.{up,down}.sql` + a `PRAGMA user_version` runner, expand/contract discipline, and a **tested up→down→up rollback**. |
 
 ---
 
-## The Data
+## 🚀 Quickstart
 
-The API exposes **300 synthetic patients** across three facilities. No real PHI is used.
+```bash
+# 1. install
+python -m venv .venv && source .venv/bin/activate
+pip install -e .                      # add ".[llm]" for the optional Claude lane
 
-| Facility | `facility_id` | Patients |
-|---|---|---|
-| Facility A | `101` | 120 |
-| Facility B | `102` | 90 |
-| Facility C | `103` | 90 |
+# 2. run the whole pipeline against the live API (resilient + resumable)
+woundpipe run-all --db data/woundpipe.db
+#   init-db → ingest (≈1,200 calls through the 429 storm) → extract → route → publish
 
-**Payer mix:** ~60% Medicare Part B, ~15% Medicare Part A, ~10% Medicaid, ~15% HMO. Only Medicare Part B patients are eligible for the billing workflow.
+# 3. see the dashboard
+cd frontend && npm install && npm run dev      # reads data/export.json
+```
 
-**Note formats you will encounter:**
+Individual stages are independently re-runnable (and resume):
 
-| Format | Description |
-|---|---|
-| SOAP | Fully structured — wound type, stage, and dimensions are explicit labeled fields |
-| Prose | Abbreviated free text with shorthand like `Meas 4.2x3.1x1.5cm` |
-| Multi-wound | Describes two wounds; you must identify the primary wound |
-| Envive | All clinical details packed into a single unstructured narrative paragraph |
+```bash
+woundpipe init-db
+woundpipe ingest --facilities 101,102,103        # add --since <ISO> for incremental
+woundpipe extract
+woundpipe route                                   # prints the routing distribution
+woundpipe publish --out data/export.json
+```
 
-**Wound types:** pressure ulcer (stages 2–4 and unstageable), diabetic foot ulcer, venous stasis ulcer, arterial ulcer, surgical site infection, abscess, burn.
-
----
-
-## The API
-
-**Base URL:** `https://hackathon.prod.pulsefoundry.ai`
-
-Full endpoint documentation is in [API.md](./API.md). The short version:
-
-| Endpoint | What it returns |
-|---|---|
-| `GET /pcc/patients?facility_id=101` | All patients for a facility |
-| `GET /pcc/diagnoses?patient_id=FA-001` | ICD-10 diagnoses for a patient |
-| `GET /pcc/coverage?patient_id=FA-001` | Insurance coverage records |
-| `GET /pcc/notes?patient_id=1` | Free-text clinical progress notes |
-| `GET /pcc/assessments?patient_id=1` | Structured wound assessment forms |
-
-**Important — two patient identifiers:**
-- `patient_id` (string, e.g. `FA-001`) — use this for `/diagnoses` and `/coverage`
-- `id` (integer, e.g. `1`) — use this for `/notes` and `/assessments`
-
-Both are returned by the `/patients` endpoint.
-
-**Rate limiting:** Every request has a **30% chance of returning HTTP 429**. The response includes a `Retry-After` header. You must implement retry logic — pipelines that don't handle 429s will fail to load data. See [API.md](./API.md) for recommended retry patterns.
+> No `ANTHROPIC_API_KEY`? The **deterministic regex lane is the floor** — the pipeline runs and routes everything without an LLM. The Claude lane is pure upside.
 
 ---
 
-## What to Build
+## 🖥️ The dashboard (white + teal glass)
 
-### Required
+A Vite + React 19 + Tailwind v4 SPA that reads a **static `export.json`** (zero backend to crash mid-demo):
 
-**1. Data ingestion pipeline**
-Fetch all patients, diagnoses, coverage, notes, and assessments from the API. Handle rate limiting. Store the results somewhere queryable (a local database, dataframe, files — your choice).
-
-**2. Wound data extraction**
-From each progress note and assessment, extract:
-- Wound type
-- Wound stage (for pressure ulcers)
-- Location
-- Measurements: length, width, depth (cm)
-- Drainage amount (`none` / `light` / `moderate` / `heavy`)
-
-**3. Eligibility output table**
-Produce one row per patient with:
-- Extracted wound fields (above)
-- Whether the patient has active Medicare Part B coverage
-- A routing decision: `auto_accept`, `flag_for_review`, or `reject`
-- A plain-English reason for the decision
-
-**4. Presentation**
-Walk us through your output as if presenting to a non-technical biller. What do they see? How do they know what to act on?
-
-**5. Visual output**
-Display your results in a visual format — a dashboard, UI, or interactive table. A biller should be able to see patient routing decisions at a glance without reading raw data.
-
-### Optional / Bonus
-
-- Use an LLM or agent to assist with extraction or generate a summary narrative per patient
-- Implement incremental sync using the `since` parameter (only fetch records modified since your last run)
+- **Command Center** — count-up KPI glass cards, a live React-Flow pipeline graph, a payer→eligibility→route Sankey.
+- **Triage Queue** — TanStack table, color **+ icon** routing, a confidence gauge, plain-English reasons, instant search/filter.
+- **Patient Detail** — the original note with **extracted fields highlighted in place**, the three eligibility checks, and the **evidence graph** (green = agree, red = conflict).
+- **Pipeline Flow** — per-stage counts with the **429 retry rendered amber → green**, and a 300 → eligible → auto_accept funnel.
 
 ---
 
-## Judging Criteria
+## 🗂️ Project structure
 
-| Area | What we're looking for |
-|---|---|
-| **Pipeline design** | Does it handle API failures gracefully? Is the data flow clear and maintainable? |
-| **Extraction accuracy** | Are wound fields correctly pulled from both structured and free-text notes? |
-| **Schema & data modeling** | Is the output well-structured and easy to query? |
-| **Presentation** | Can you explain your output to a non-technical audience? Is the routing logic easy to follow? |
-| **Problem-solving approach** | How did you handle ambiguous cases? What tradeoffs did you make? |
-
-There is no single correct solution. We care more about your reasoning and methodology than a perfect accuracy score. Be prepared to explain your decisions.
+```
+src/woundpipe/
+  config.py  errors.py  logging.py  models.py      # shared contracts
+  db/        engine.py  migrate.py                  # WAL + user_version runner
+  ingest/    client.py  fetch.py  checkpoint.py     # resilient fetch + resume
+  resolve/   identity.py                            # two-identity hard gate
+  extract/   sniff.py regex_lane.py llm_lane.py reconcile.py engine.py
+  route/     eligibility.py                          # SQL-view execution + Python oracle
+  publish/   export.py                               # export.json
+  observability/ manifest.py                          # RunManifest
+  cli.py                                              # Typer: init-db|ingest|extract|route|publish|run-all
+migrations/  001_initial_schema.{up,down}.sql  002_wound_field_evidence.{up,down}.sql
+frontend/    React 19 + Vite + Tailwind v4 (white/teal glass)
+tests/       extraction · routing oracle · view↔oracle equality
+```
 
 ---
 
-## Submission
+## ✅ Testing
 
-At the end of the session, you will present your work. Plan for roughly **10 minutes**: a brief walkthrough of your pipeline architecture, a demo of your output table, and a few example patients showing your routing decisions.
+```bash
+pytest -q          # extraction correctness · routing oracle · SQL-view↔oracle equality (R5)
+```
 
-Bring any questions — we're available throughout.
+Acceptance highlights enforced: resilient/resumable ingest, **no fabricated measurements** (every numeric is a literal substring of its source), every routed patient has a non-empty reason, and the SQL routing view agrees with the Python policy oracle.
 
-Good luck.
+---
+
+## 🔭 From hackathon to MVP
+
+Built as an MVP, not a throwaway: schema-managed, idempotent, resumable, observable. The roadmap — audit trail, human-in-the-loop threshold calibration on a labeled gold set, incremental `since` sync, real PCC integration under a BAA — is documented in [`.agency/artifacts/MASTER-BLUEPRINT.md`](.agency/artifacts/MASTER-BLUEPRINT.md) and [`.agency/artifacts/SPEC.md`](.agency/artifacts/SPEC.md).
+
+> **Compliance:** synthetic data only, no PHI. HIPAA-ready by design — no PHI in logs, least-privilege, an audit trail per decision.
+
+---
+
+<div align="center">
+<sub>Built with the Agency · grounded in the live API · every load-bearing claim verified, not asserted.</sub>
+</div>

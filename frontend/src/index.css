@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+/* ============================================================
+   woundpipe — refined "clinical instrument" theme.
+   Warm-paper canvas, solid surfaces, hairline borders, near-black
+   ink as the brand/primary, restrained semantic color for status.
+   No glassmorphism, no aurora gradients, no glow. Tokens only —
+   never hardcode hex in components; extend a token instead.
+   ============================================================ */
+@theme {
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "Menlo", monospace;
+
+  /* --- neutral ink scale (also the brand / primary action color) --- */
+  --color-ink: #1a1a1f;        /* primary text + brand */
+  --color-ink-soft: #56555e;   /* secondary text */
+  --color-ink-faint: #908f99;  /* tertiary / placeholder */
+  --color-brand: #1a1a1f;
+
+  /* --- warm-neutral surfaces --- */
+  --color-canvas: #f5f4f1;     /* page */
+  --color-surface: #ffffff;    /* cards */
+  --color-surface-2: #faf9f6;  /* alt / inset */
+  --color-border: #e6e4dd;     /* hairline */
+  --color-border-strong: #d8d5cc;
+
+  /* --- "teal" ramp retuned to a muted, professional emerald so any
+         remaining teal class reads as a refined, billable green --- */
+  --color-teal-50: #edf5f0;
+  --color-teal-100: #d7eadf;
+  --color-teal-200: #b0d6c3;
+  --color-teal-300: #7cbb9f;
+  --color-teal-400: #469a78;
+  --color-teal-500: #1f835f;
+  --color-teal-600: #137551;
+  --color-teal-700: #0f6244;
+  --color-teal-800: #0d4f38;
+  --color-teal-900: #0c4030;
+
+  /* cyan / emerald folded into the same green family (kills neon gradients) */
+  --color-cyan-400: #2f9772;
+  --color-cyan-500: #1f835f;
+  --color-emerald-400: #3a9a76;
+  --color-emerald-500: #1f835f;
+
+  /* --- semantic status (muted, sit calmly on warm paper) --- */
+  --color-accept: #137551;     /* ready to bill / approved / strong */
+  --color-flag: #b06a10;       /* needs review / moderate */
+  --color-reject: #b3341f;     /* not billable / weak */
+
+  --radius-glass: 0.75rem;     /* legacy name → tightened card radius */
+  --radius-card: 0.75rem;
+  --shadow-glass: 0 1px 2px rgb(20 20 31 / 0.04), 0 1px 3px rgb(20 20 31 / 0.05);
+  --shadow-glass-lg: 0 1px 2px rgb(20 20 31 / 0.05), 0 12px 28px -10px rgb(20 20 31 / 0.14);
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    background-color: var(--color-canvas);
+    /* faint precision grid — atmosphere without slop */
+    background-image: radial-gradient(rgb(26 26 31 / 0.022) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+    border-radius: 5px;
+  }
+  ::selection { background: rgb(19 117 81 / 0.16); }
+  /* numerics read as data-grade precision */
+  .tabular { font-family: var(--font-mono); font-feature-settings: "tnum" 1; letter-spacing: -0.01em; }
+}
+
+@layer components {
+  /* Solid card surfaces. The .glass / .glass-strong names are kept so the
+     existing GlassCard component picks up the refined look automatically. */
+  .glass {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-glass);
+  }
+  .glass-strong {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-glass-lg);
+  }
+  /* Headings are solid ink now, with tight optical tracking. */
+  .gradient-text {
+    color: var(--color-ink);
+    letter-spacing: -0.025em;
+  }
+  /* "gradient-teal" surfaces (brand tile, active tab, primary buttons)
+     become a single confident ink fill. */
+  .gradient-teal {
+    background: var(--color-ink);
+  }
+  .ring-glass { box-shadow: inset 0 0 0 1px var(--color-border); }
+}
+
+/* React Flow surface blends with the canvas */
+.react-flow__attribution { display: none; }
+.react-flow__edge-path { stroke-linecap: round; }
+
+/* dashed packet-flow animation for pipeline edges (class lands on edge <g>) */
+@keyframes dashflow { to { stroke-dashoffset: -24; } }
+.react-flow__edge.edge-flow .react-flow__edge-path {
+  stroke-dasharray: 6 6;
+  animation: dashflow 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .react-flow__edge.edge-flow .react-flow__edge-path { animation: none; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* skeleton shimmer */
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after {
+  content: ""; position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.65), transparent);
+  animation: shimmer 1.4s infinite;
+}
+@media (prefers-reduced-motion: reduce) { .shimmer::after { animation: none; } }

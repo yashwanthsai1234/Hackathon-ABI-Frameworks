@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>woundpipe · Mission Control — Teal Command Deck (Variant B)</title>
+<style>
+  /* ============================================================
+     VARIANT B — "Teal Command Deck"
+     White-based glassmorphism, teal→cyan→emerald, monospace numerics.
+     All motion: transform/opacity only, gated by prefers-reduced-motion.
+     ============================================================ */
+  :root{
+    /* color — net-new palette tokens for this A/B prototype (design-system
+       color tier is unpopulated; flagged in report for capture-back) */
+    --bg:          #e9f3f3;
+    --bg-2:        #dcecee;
+    --glass:       rgba(255,255,255,0.66);
+    --glass-2:     rgba(255,255,255,0.82);
+    --glass-brd:   rgba(255,255,255,0.85);
+    --hair:        rgba(13,148,136,0.16);
+    --ink:         #0a2b2f;
+    --ink-soft:    #45686d;
+    --ink-faint:   #7fa0a4;
+    --teal:        #0d9488;
+    --teal-700:    #0f766e;
+    --cyan:        #0891b2;
+    --cyan-500:    #06b6d4;
+    --emerald:     #059669;
+    --emerald-500: #10b981;
+    --amber:       #f59e0b;
+    --amber-600:   #d97706;
+    --rose:        #e11d48;
+    --rose-soft:   #fb7185;
+    /* motion tokens — from design-system.md (do not hard-code) */
+    --dur-micro:   200ms;
+    --dur-large:   400ms;
+    --ease-enter:  cubic-bezier(0,0,0,1);
+    --ease-exit:   cubic-bezier(0.3,0,1,1);
+    --ease-std:    cubic-bezier(0.2,0,0,1);
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 8% -8%, rgba(6,182,212,.18), transparent 60%),
+      radial-gradient(1000px 700px at 100% 0%, rgba(16,185,129,.16), transparent 55%),
+      linear-gradient(180deg, var(--bg), var(--bg-2));
+    background-attachment:fixed;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .num{ font-family:var(--mono); font-feature-settings:"tnum" 1; letter-spacing:-.02em; }
+  ::selection{ background:rgba(13,148,136,.22); }
+
+  /* ---------- shell ---------- */
+  .wrap{ max-width:1280px; margin:0 auto; padding:18px 22px 64px; }
+
+  /* ---------- header band ---------- */
+  header.deck{
+    position:relative; overflow:hidden;
+    border-radius:22px;
+    padding:22px 26px;
+    color:#eafdfb;
+    background:linear-gradient(104deg,#0f766e 0%,#0891b2 48%,#059669 100%);
+    box-shadow:0 18px 50px -22px rgba(8,118,110,.7), inset 0 1px 0 rgba(255,255,255,.22);
+  }
+  header.deck::after{ /* glass sheen, opacity-animated only */
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(100deg, transparent 30%, rgba(255,255,255,.16) 50%, transparent 70%);
+    opacity:.0; pointer-events:none;
+  }
+  .deck-top{ display:flex; align-items:center; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+  .brand{ display:flex; align-items:center; gap:13px; }
+  .logo{
+    width:42px; height:42px; border-radius:12px; flex:none;
+    background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.4);
+    display:grid; place-content:center; backdrop-filter:blur(6px);
+  }
+  .logo svg{ display:block; }
+  .brand h1{ margin:0; font-size:19px; letter-spacing:-.2px; font-weight:700; }
+  .brand .sub{ font-size:12.5px; opacity:.86; margin-top:1px; font-weight:500; }
+  .deck-meta{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .pill{
+    display:inline-flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.34);
+    padding:6px 11px; border-radius:999px; font-size:12px; backdrop-filter:blur(6px);
+  }
+  .pill .num{ font-size:12px; }
+  .livedot{ width:8px; height:8px; border-radius:50%; background:#7dffd0; box-shadow:0 0 0 0 rgba(125,255,208,.7); flex:none; }
+
+  /* state toggle (mission-control feed switch) */
+  .feedctl{ display:flex; gap:4px; background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.32); border-radius:999px; padding:3px; }
+  .feedctl button{
+    font:inherit; font-size:11.5px; font-weight:600; color:#eafdfb; cursor:pointer;
+    background:transparent; border:0; border-radius:999px; padding:5px 12px; letter-spacing:.2px;
+  }
+  .feedctl button[aria-pressed="true"]{ background:rgba(255,255,255,.92); color:var(--teal-700); }
+  .feedctl button:focus-visible{ outline:2px solid #eafdfb; outline-offset:2px; }
+
+  /* ---------- stat tiles ---------- */
+  .tiles{ display:grid; grid-template-columns:repeat(6,1fr); gap:13px; margin-top:16px; }
+  @media(max-width:980px){ .tiles{ grid-template-columns:repeat(3,1fr); } }
+  @media(max-width:560px){ .tiles{ grid-template-columns:repeat(2,1fr); } }
+  .tile{
+    position:relative; overflow:hidden;
+    border-radius:16px; padding:14px 14px 13px;
+    background:var(--glass); border:1px solid var(--glass-brd);
+    backdrop-filter:blur(16px) saturate(150%);
+    box-shadow:0 10px 28px -18px rgba(8,80,80,.55), inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .tile::before{ /* vivid teal gradient accent fill, top corner */
+    content:""; position:absolute; right:-30px; top:-30px; width:90px; height:90px; border-radius:50%;
+    background:radial-gradient(circle at 30% 30%, rgba(6,182,212,.5), rgba(16,185,129,.0) 70%);
+    pointer-events:none;
+  }
+  .tile .cap{ font-size:11px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.6px; display:flex; align-items:center; gap:6px; }
+  .tile .big{ font-size:30px; font-weight:700; margin-top:8px; line-height:1; background:linear-gradient(120deg,var(--teal-700),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tile.accent-amber .big{ background:linear-gradient(120deg,var(--amber-600),var(--amber)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tile.accent-rose .big{ background:linear-gradient(120deg,#be123c,var(--rose-soft)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tile.accent-emerald .big{ background:linear-gradient(120deg,var(--emerald),var(--emerald-500)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tile .sub{ font-size:11.5px; color:var(--ink-faint); margin-top:5px; }
+  .spark{ height:3px; border-radius:3px; margin-top:9px; background:linear-gradient(90deg,var(--teal),var(--cyan),var(--emerald)); opacity:.85; }
+
+  /* ---------- panel scaffolding ---------- */
+  .grid{ display:grid; grid-template-columns:1.55fr 1fr; gap:16px; margin-top:16px; }
+  @media(max-width:980px){ .grid{ grid-template-columns:1fr; } }
+  .panel{
+    border-radius:20px; padding:16px 18px;
+    background:var(--glass); border:1px solid var(--glass-brd);
+    backdrop-filter:blur(18px) saturate(150%);
+    box-shadow:0 16px 40px -26px rgba(8,80,80,.6), inset 0 1px 0 rgba(255,255,255,.7);
+  }
+  .panel h2{ margin:0 0 2px; font-size:14px; font-weight:700; letter-spacing:-.1px; display:flex; align-items:center; gap:8px; }
+  .panel .lede{ font-size:12px; color:var(--ink-soft); margin:0 0 14px; }
+  .badge{ font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px; letter-spacing:.4px; }
+  .badge.teal{ background:rgba(13,148,136,.12); color:var(--teal-700); border:1px solid rgba(13,148,136,.25); }
+
+  /* ======================================================
+     HERO PIPELINE (left → right)
+     ====================================================== */
+  .pipe{ position:relative; }
+  .spine{ display:flex; align-items:stretch; gap:0; overflow-x:auto; padding:6px 2px 12px; }
+  .node{
+    position:relative; flex:0 0 138px; min-height:96px;
+    border-radius:14px; padding:11px 12px;
+    background:linear-gradient(160deg, rgba(255,255,255,.92), rgba(232,250,250,.78));
+    border:1px solid var(--glass-brd);
+    box-shadow:0 8px 22px -16px rgba(8,80,80,.7), inset 0 1px 0 rgba(255,255,255,.9);
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .node .stg{ font-size:9.5px; font-weight:700; letter-spacing:.5px; color:var(--cyan); text-transform:uppercase; }
+  .node .nm{ font-size:13px; font-weight:700; margin-top:2px; }
+  .node .mv{ font-size:18px; font-weight:700; margin-top:6px; }
+  .node .mu{ font-size:10.5px; color:var(--ink-faint); }
+  .node.glow{ box-shadow:0 0 0 1px rgba(6,182,212,.35), 0 10px 26px -14px rgba(6,182,212,.65), inset 0 1px 0 rgba(255,255,255,.9); }
+  .node .ic{ position:absolute; top:11px; right:11px; opacity:.8; }
+
+  /* connector track between nodes — particles travel along it */
+  .conn{ flex:0 0 auto; align-self:center; position:relative; width:54px; height:30px; }
+  @media(max-width:980px){ .conn{ width:40px; } }
+  .conn .rail{ position:absolute; top:50%; left:0; right:0; height:3px; transform:translateY(-50%);
+    background:linear-gradient(90deg, rgba(13,148,136,.28), rgba(6,182,212,.5)); border-radius:3px; }
+  .conn .arrow{ position:absolute; top:50%; right:1px; transform:translateY(-50%);
+    width:0; height:0; border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:7px solid var(--cyan-500); }
+  .pkt{ position:absolute; top:50%; left:0; width:7px; height:7px; border-radius:50%;
+    margin-top:-3.5px; margin-left:-3.5px;
+    background:radial-gradient(circle at 35% 35%, #bdfff0, var(--teal));
+    box-shadow:0 0 8px 1px rgba(13,148,136,.6);
+    transform:translateX(0); }
+
+  /* 429 retry node — amber→green cross-fade via stacked opacity layers */
+  .retry{ position:relative; }
+  .retry .layer{ position:absolute; inset:0; border-radius:14px; }
+  .retry .amber{ background:linear-gradient(160deg, rgba(254,243,199,.95), rgba(253,230,138,.7)); box-shadow:inset 0 0 0 1px rgba(217,119,6,.4); opacity:1; }
+  .retry .green{ background:linear-gradient(160deg, rgba(209,250,229,.97), rgba(167,243,208,.8)); box-shadow:inset 0 0 0 1px rgba(5,150,105,.45); opacity:0; }
+  .retry .content{ position:relative; z-index:2; display:flex; flex-direction:column; justify-content:space-between; height:100%; }
+  .retry .stg{ color:var(--amber-600); }
+  .retry .retdot{ width:9px; height:9px; border-radius:50%; background:var(--amber); box-shadow:0 0 8px 1px rgba(245,158,11,.7); }
+
+  /* outcomes fan */
+  .outcomes{ display:flex; gap:8px; margin-top:14px; }
+  .oc{ flex:1; border-radius:13px; padding:11px 12px; position:relative; overflow:hidden;
+    border:1px solid var(--glass-brd); background:var(--glass-2); box-shadow:inset 0 1px 0 rgba(255,255,255,.8); }
+  .oc .ocnm{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; display:flex; align-items:center; gap:6px; }
+  .oc .ocv{ font-size:24px; font-weight:700; margin-top:5px; }
+  .oc .ocp{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
+  .oc .strip{ position:absolute; left:0; top:0; bottom:0; width:4px; }
+  .oc.acc .ocnm{ color:var(--emerald); } .oc.acc .strip{ background:linear-gradient(180deg,var(--emerald),var(--emerald-500)); }
+  .oc.flg .ocnm{ color:var(--amber-600); } .oc.flg .strip{ background:linear-gradient(180deg,var(--amber-600),var(--amber)); }
+  .oc.rej .ocnm{ color:#be123c; } .oc.rej .strip{ background:linear-gradient(180deg,#be123c,var(--rose-soft)); }
+  .dot{ width:8px; height:8px; border-radius:50%; flex:none; }
+
+  /* throughput ticker */
+  .ticker{ display:flex; gap:18px; flex-wrap:wrap; margin-top:14px; padding-top:13px; border-top:1px dashed var(--hair); font-size:12px; color:var(--ink-soft); }
+  .ticker b{ font-family:var(--mono); color:var(--ink); font-weight:700; }
+
+  /* ======================================================
+     SANKEY
+     ====================================================== */
+  .sankey-wrap{ width:100%; }
+  .sankey-wrap svg{ width:100%; height:auto; display:block; }
+  .snode{ rx:5; }
+  .slabel{ font-family:var(--sans); font-size:11px; font-weight:700; fill:var(--ink); }
+  .scount{ font-family:var(--mono); font-size:11px; font-weight:700; }
+  .scol{ font-family:var(--sans); font-size:10px; font-weight:700; letter-spacing:.6px; fill:var(--ink-faint); text-transform:uppercase; }
+
+  /* ======================================================
+     TRIAGE PREVIEW
+     ====================================================== */
+  .filters{ display:flex; gap:7px; flex-wrap:wrap; margin:2px 0 12px; }
+  .chip{ font:inherit; font-size:11.5px; font-weight:600; cursor:pointer;
+    border:1px solid var(--hair); background:rgba(255,255,255,.55); color:var(--ink-soft);
+    padding:5px 11px; border-radius:999px; display:inline-flex; gap:6px; align-items:center; }
+  .chip[aria-pressed="true"]{ background:linear-gradient(120deg,var(--teal),var(--cyan)); color:#fff; border-color:transparent; box-shadow:0 6px 14px -8px rgba(8,118,110,.8); }
+  .chip:focus-visible{ outline:2px solid var(--teal); outline-offset:2px; }
+  table.triage{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.triage th{ text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--ink-faint); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--hair); }
+  table.triage td{ padding:9px 8px; border-bottom:1px solid rgba(13,148,136,.08); vertical-align:middle; }
+  table.triage tr.row{ cursor:pointer; }
+  table.triage tr.row:focus-visible{ outline:2px solid var(--teal); outline-offset:-2px; }
+  .rtag{ display:inline-flex; align-items:center; gap:6px; font-weight:700; font-size:11px; padding:3px 9px; border-radius:999px; }
+  .rtag.acc{ background:rgba(16,185,129,.13); color:var(--emerald); }
+  .rtag.flg{ background:rgba(245,158,11,.15); color:var(--amber-600); }
+  .rtag.rej{ background:rgba(225,29,72,.12); color:#be123c; }
+  .gauge{ width:62px; height:7px; border-radius:7px; background:rgba(13,148,136,.12); overflow:hidden; display:inline-block; vertical-align:middle; }
+  .gauge > i{ display:block; height:100%; border-radius:7px; background:linear-gradient(90deg,var(--teal),var(--cyan),var(--emerald)); }
+  .reason{ color:var(--ink-soft); font-size:11.5px; }
+  .pyr{ font-family:var(--mono); font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:6px; background:rgba(8,145,178,.12); color:var(--cyan); }
+
+  /* ======================================================
+     STATE PANELS (loading / empty / error) — full-state design
+     ====================================================== */
+  .stateview{ display:none; }
+  body[data-feed="live"]    #v-live    { display:block; }
+  body[data-feed="loading"] #v-loading { display:block; }
+  body[data-feed="empty"]   #v-empty   { display:block; }
+  body[data-feed="error"]   #v-error   { display:block; }
+
+  .statecard{ text-align:center; padding:44px 22px; }
+  .statecard .ico{ width:58px; height:58px; border-radius:16px; display:grid; place-content:center; margin:0 auto 14px; }
+  .statecard h3{ margin:0 0 6px; font-size:16px; }
+  .statecard p{ margin:0 auto; max-width:440px; font-size:13px; color:var(--ink-soft); line-height:1.5; }
+  .statecard .act{ margin-top:16px; }
+  .btn{ font:inherit; font-size:13px; font-weight:600; cursor:pointer; border:0; border-radius:11px; padding:9px 18px; color:#fff;
+    background:linear-gradient(120deg,var(--teal),var(--cyan)); box-shadow:0 10px 24px -12px rgba(8,118,110,.8); }
+  .btn:focus-visible{ outline:2px solid var(--teal-700); outline-offset:2px; }
+  .btn.ghost{ background:rgba(255,255,255,.7); color:var(--teal-700); border:1px solid var(--hair); box-shadow:none; }
+
+  /* skeleton shimmer rows for loading */
+  .sk{ border-radius:12px; background:linear-gradient(100deg, rgba(255,255,255,.5) 30%, rgba(213,238,238,.85) 50%, rgba(255,255,255,.5) 70%); background-size:200% 100%; }
+  .sk-tile{ height:96px; }
+  .sk-line{ height:14px; margin:10px 0; }
+  .sk-node{ height:96px; flex:0 0 138px; }
+
+  /* ======================================================
+     MOTION — opt-in, transform/opacity only (toolkit §3,§6)
+     ====================================================== */
+  @media (prefers-reduced-motion: no-preference){
+    header.deck::after{ animation:sheen 7s var(--ease-std) infinite; }
+    @keyframes sheen{ 0%{opacity:0; transform:translateX(-30%);} 18%{opacity:.7;} 36%,100%{opacity:0; transform:translateX(30%);} }
+
+    .livedot{ animation:ping 2.2s var(--ease-std) infinite; }
+    @keyframes ping{ 0%{ box-shadow:0 0 0 0 rgba(125,255,208,.7);} 70%,100%{ box-shadow:0 0 0 7px rgba(125,255,208,0);} }
+
+    /* particles flow left→right; --track set per-connector by JS */
+    .pkt{ animation:flow 2.4s linear infinite; }
+    .pkt.d1{ animation-delay:.0s; } .pkt.d2{ animation-delay:.8s; } .pkt.d3{ animation-delay:1.6s; }
+    @keyframes flow{
+      0%{ transform:translateX(0) scale(.8); opacity:0; }
+      12%{ opacity:1; }
+      88%{ opacity:1; }
+      100%{ transform:translateX(var(--track,54px)) scale(1); opacity:0; }
+    }
+
+    /* 429 retry: cross-fade amber→green (opacity) + gentle settle (scale) */
+    .retry .amber{ animation:fadeOut 3.4s var(--ease-std) infinite; }
+    .retry .green{ animation:fadeIn  3.4s var(--ease-std) infinite; }
+    .retry .retdot{ animation:retpulse 3.4s var(--ease-std) infinite; }
+    .retry .content{ animation:settle 3.4s var(--ease-std) infinite; }
+    @keyframes fadeOut{ 0%,40%{opacity:1;} 62%,100%{opacity:0;} }
+    @keyframes fadeIn{  0%,40%{opacity:0;} 62%,100%{opacity:1;} }
+    @keyframes settle{ 0%,40%{transform:scale(1);} 56%{transform:scale(1.035);} 70%,100%{transform:scale(1);} }
+    @keyframes retpulse{ 0%,40%{ background:var(--amber); box-shadow:0 0 8px 1px rgba(245,158,11,.7);} 62%,100%{ background:var(--emerald); box-shadow:0 0 8px 1px rgba(5,150,105,.7);} }
+
+    .countup{ /* JS-driven count-up only animates here; rest state = final value */ }
+    .sk{ animation:shimmer 1.3s linear infinite; }
+    @keyframes shimmer{ to{ background-position:-200% 0; } }
+
+    .rise{ opacity:0; transform:translateY(10px); animation:rise var(--dur-large) var(--ease-enter) forwards; }
+    .rise.s1{ animation-delay:.04s;} .rise.s2{ animation-delay:.10s;} .rise.s3{ animation-delay:.16s;}
+    @keyframes rise{ to{ opacity:1; transform:translateY(0);} }
+  }
+  /* resting state (reduced motion / unsupported): everything visible, retry shows resolved green */
+  @media (prefers-reduced-motion: reduce){
+    .retry .amber{ opacity:0; } .retry .green{ opacity:1; } .retry .retdot{ background:var(--emerald); }
+  }
+  .rise{ } /* fails safe: visible by default; animation only adds entrance */
+</style>
+</head>
+<body data-feed="live">
+<div class="wrap">
+
+  <!-- ============ HEADER BAND ============ -->
+  <header class="deck">
+    <div class="deck-top">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M3 12c3-7 6 7 9 0s6 7 9 0" stroke="#eafdfb" stroke-width="2.1" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <div>
+          <h1>woundpipe<span style="opacity:.6;font-weight:500"> · Mission Control</span></h1>
+          <div class="sub">Wound-care billing triage — PCC → extract → route</div>
+        </div>
+      </div>
+      <div class="deck-meta">
+        <span class="pill"><span class="livedot" aria-hidden="true"></span>run <span class="num">#wp-2026-0628-1142</span></span>
+        <span class="pill">snapshot <span class="num">2026-06-28 11:42:07Z</span></span>
+        <div class="feedctl" role="group" aria-label="Pipeline feed state">
+          <button data-feed="live" aria-pressed="true">Live</button>
+          <button data-feed="loading" aria-pressed="false">Loading</button>
+          <button data-feed="empty" aria-pressed="false">Empty</button>
+          <button data-feed="error" aria-pressed="false">Error</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- stat tiles -->
+    <div class="tiles" aria-label="Run summary">
+      <div class="tile rise s1">
+        <div class="cap">Patients</div>
+        <div class="big num countup" data-to="300">0</div>
+        <div class="sub">ingested · 0 dropped</div>
+        <div class="spark"></div>
+      </div>
+      <div class="tile rise s1">
+        <div class="cap">MCB-active</div>
+        <div class="big num countup" data-to="186">0</div>
+        <div class="sub">62% of cohort</div>
+        <div class="spark"></div>
+      </div>
+      <div class="tile rise s2">
+        <div class="cap">Extracted</div>
+        <div class="big num countup" data-to="287">0</div>
+        <div class="sub">96% · 13 partial</div>
+        <div class="spark"></div>
+      </div>
+      <div class="tile accent-emerald rise s2">
+        <div class="cap"><span class="dot" style="background:var(--emerald)"></span>Auto-accept</div>
+        <div class="big num countup" data-to="118">0</div>
+        <div class="sub">conf ≥ 0.80 · agree</div>
+        <div class="spark"></div>
+      </div>
+      <div class="tile accent-amber rise s3">
+        <div class="cap"><span class="dot" style="background:var(--amber)"></span>Flag</div>
+        <div class="big num countup" data-to="41">0</div>
+        <div class="sub">needs biller review</div>
+        <div class="spark"></div>
+      </div>
+      <div class="tile accent-rose rise s3">
+        <div class="cap"><span class="dot" style="background:var(--rose)"></span>Reject</div>
+        <div class="big num countup" data-to="141">0</div>
+        <div class="sub">ineligible · reasoned</div>
+        <div class="spark"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ STATE: LOADING ============ -->
+  <section id="v-loading" class="stateview" aria-live="polite">
+    <div class="grid">
+      <div class="panel">
+        <h2>Pipeline Run <span class="badge teal">FETCHING</span></h2>
+        <p class="lede">Streaming 300 patients from PCC EHR — respecting Retry-After on 429…</p>
+        <div class="spine" aria-hidden="true">
+          <div class="sk sk-node"></div><div class="conn"></div>
+          <div class="sk sk-node"></div><div class="conn"></div>
+          <div class="sk sk-node"></div><div class="conn"></div>
+          <div class="sk sk-node"></div><div class="conn"></div>
+          <div class="sk sk-node"></div>
+        </div>
+        <div class="sk sk-line" style="width:70%"></div>
+        <div class="sk sk-line" style="width:52%"></div>
+      </div>
+      <div class="panel">
+        <h2>Payer → Route</h2>
+        <p class="lede">Awaiting eligibility resolve…</p>
+        <div class="sk sk-line" style="width:90%;height:200px;border-radius:14px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATE: EMPTY ============ -->
+  <section id="v-empty" class="stateview">
+    <div class="panel" style="margin-top:16px">
+      <div class="statecard">
+        <div class="ico" style="background:rgba(13,148,136,.12)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="var(--teal)" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <h3>No run loaded yet</h3>
+        <p>This snapshot is empty. Trigger an ingestion run to pull patients from PCC, extract wound fields from the four note formats, and route each case. The command deck populates the moment <span class="num">export.json</span> lands.</p>
+        <div class="act"><button class="btn" data-goto="live">Load latest snapshot</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATE: ERROR ============ -->
+  <section id="v-error" class="stateview">
+    <div class="panel" style="margin-top:16px; border-color:rgba(225,29,72,.3)">
+      <div class="statecard">
+        <div class="ico" style="background:rgba(225,29,72,.12)">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5v.5" stroke="var(--rose)" stroke-width="2.2" stroke-linecap="round"/><path d="M12 3l9 16H3l9-16z" stroke="var(--rose)" stroke-width="2" stroke-linejoin="round"/></svg>
+        </div>
+        <h3>Publish failed — partial run held back</h3>
+        <p>Ingestion resolved <span class="num">700/300</span> tasks then hit a hard <span class="num">422</span> on identity resolve (<span class="num">patient_id↔id</span> gate). The deck refuses to show a half-truth: no patients published. Resume picks up only the remainder — idempotent, zero double-counting.</p>
+        <div class="act">
+          <button class="btn" data-goto="live">Resume from checkpoint</button>
+          <button class="btn ghost" data-goto="loading" style="margin-left:8px">View logs</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATE: LIVE (success) ============ -->
+  <section id="v-live" class="stateview">
+    <div class="grid">
+
+      <!-- HERO PIPELINE -->
+      <div class="panel pipe">
+        <h2>Pipeline Run <span class="badge teal">S0 → S6 · LIVE</span></h2>
+        <p class="lede">300 patients flowing left → right: ingest · resolve · normalize · sniff · extract · route. Particles = in-flight records; the 429 node clears amber → green as retries resolve.</p>
+
+        <div class="spine" id="spine">
+          <div class="node glow">
+            <div><div class="stg">S0 · ingest</div><div class="nm">PCC API</div></div>
+            <div><div class="mv num">1,203</div><div class="mu">calls · 8 concurrent</div></div>
+            <span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M14 6l6 6-6 6" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          </div>
+
+          <div class="conn"><span class="rail"></span><span class="pkt d1"></span><span class="pkt d2"></span><span class="pkt d3"></span><span class="arrow"></span></div>
+
+          <!-- 429 retry node -->
+          <div class="node retry">
+            <span class="layer amber"></span><span class="layer green"></span>
+            <div class="content">
+              <div><div class="stg">429 · retry</div><div class="nm" style="display:flex;align-items:center;gap:7px">Retry <span class="retdot" aria-hidden="true"></span></div></div>
+              <div><div class="mv num">360</div><div class="mu">retried · 360 resolved</div></div>
+            </div>
+          </div>
+
+          <div class="conn"><span class="rail"></span><span class="pkt d1"></span><span class="pkt d2"></span><span class="pkt d3"></span><span class="arrow"></span></div>
+
+          <div class="node">
+            <div><div class="stg">S1 · resolve</div><div class="nm">Identity</div></div>
+            <div><div class="mv num">300</div><div class="mu">id↔patient_id ✓</div></div>
+          </div>
+
+          <div class="conn"><span class="rail"></span><span class="pkt d1"></span><span class="pkt d2"></span><span class="pkt d3"></span><span class="arrow"></span></div>
+
+          <div class="node">
+            <div><div class="stg">S2·S3 · sniff</div><div class="nm">Normalize</div></div>
+            <div><div class="mv num">4</div><div class="mu">formats detected</div></div>
+          </div>
+
+          <div class="conn"><span class="rail"></span><span class="pkt d1"></span><span class="pkt d2"></span><span class="pkt d3"></span><span class="arrow"></span></div>
+
+          <div class="node glow">
+            <div><div class="stg">S4 · extract</div><div class="nm">Wound fields</div></div>
+            <div><div class="mv num">287</div><div class="mu">regex + Claude</div></div>
+            <span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6" stroke="var(--teal)" stroke-width="2"/><path d="M16 16l4 4" stroke="var(--teal)" stroke-width="2" stroke-linecap="round"/></svg></span>
+          </div>
+
+          <div class="conn"><span class="rail"></span><span class="pkt d1"></span><span class="pkt d2"></span><span class="pkt d3"></span><span class="arrow"></span></div>
+
+          <div class="node">
+            <div><div class="stg">S5 · route</div><div class="nm">SQL VIEW</div></div>
+            <div><div class="mv num">300</div><div class="mu">v_patient_eligibility</div></div>
+          </div>
+        </div>
+
+        <!-- outcomes fan -->
+        <div class="outcomes" aria-label="Routing outcomes">
+          <div class="oc acc"><span class="strip"></span><div class="ocnm"><span class="dot" style="background:var(--emerald)"></span>Auto-accept</div><div class="ocv num">118</div><div class="ocp">39.3% · conf ≥ 0.80</div></div>
+          <div class="oc flg"><span class="strip"></span><div class="ocnm"><span class="dot" style="background:var(--amber)"></span>Flag</div><div class="ocv num">41</div><div class="ocp">13.7% · review</div></div>
+          <div class="oc rej"><span class="strip"></span><div class="ocnm"><span class="dot" style="background:var(--rose)"></span>Reject</div><div class="ocv num">141</div><div class="ocp">47.0% · ineligible</div></div>
+        </div>
+
+        <div class="ticker">
+          <span>fetched <b>1,203</b></span>
+          <span>retried <b>360</b></span>
+          <span>extracted <b>287</b></span>
+          <span>routed <b>300</b></span>
+          <span>throughput <b>4.6/s</b></span>
+          <span>elapsed <b>06:51</b></span>
+        </div>
+      </div>
+
+      <!-- SANKEY -->
+      <div class="panel">
+        <h2>Payer → Eligibility → Route</h2>
+        <p class="lede">Band width = patient count. Only <b>MCB</b> with an active wound + measurements clears eligibility — the rest reject by policy.</p>
+        <div class="sankey-wrap">
+          <svg viewBox="0 0 840 300" role="img" aria-label="Sankey: 300 patients flow from payer to eligibility to routing decision">
+            <defs>
+              <linearGradient id="gTeal" x1="0" x2="1"><stop offset="0" stop-color="#0d9488" stop-opacity=".55"/><stop offset="1" stop-color="#06b6d4" stop-opacity=".45"/></linearGradient>
+              <linearGradient id="gGray" x1="0" x2="1"><stop offset="0" stop-color="#94a3b8" stop-opacity=".4"/><stop offset="1" stop-color="#cbd5e1" stop-opacity=".3"/></linearGradient>
+              <linearGradient id="gAcc" x1="0" x2="1"><stop offset="0" stop-color="#06b6d4" stop-opacity=".5"/><stop offset="1" stop-color="#10b981" stop-opacity=".55"/></linearGradient>
+              <linearGradient id="gFlg" x1="0" x2="1"><stop offset="0" stop-color="#06b6d4" stop-opacity=".45"/><stop offset="1" stop-color="#f59e0b" stop-opacity=".55"/></linearGradient>
+              <linearGradient id="gRej" x1="0" x2="1"><stop offset="0" stop-color="#94a3b8" stop-opacity=".4"/><stop offset="1" stop-color="#e11d48" stop-opacity=".5"/></linearGradient>
+            </defs>
+
+            <!-- column headers -->
+            <text class="scol" x="30" y="14">Payer</text>
+            <text class="scol" x="360" y="14">Eligibility</text>
+            <text class="scol" x="720" y="14" text-anchor="end" transform="translate(110,0)">Route</text>
+
+            <!-- bands (drawn before nodes) -->
+            <path d="M140,24 C250,24 250,24 360,24 L360,152 C250,152 250,152 140,152 Z" fill="url(#gTeal)"/>
+            <path d="M140,152 C250,152 250,160 360,160 L360,182 C250,182 250,174 140,174 Z" fill="url(#gGray)"/>
+            <path d="M140,182 C250,182 250,182 360,182 L360,221 C250,221 250,221 140,221 Z" fill="url(#gGray)"/>
+            <path d="M140,229 C250,229 250,221 360,221 L360,252 C250,252 250,260 140,260 Z" fill="url(#gGray)"/>
+            <path d="M140,268 C250,268 250,252 360,252 L360,274 C250,274 250,290 140,290 Z" fill="url(#gGray)"/>
+
+            <path d="M470,24 C595,24 595,24 720,24 L720,119 C595,119 595,119 470,119 Z" fill="url(#gAcc)"/>
+            <path d="M470,119 C595,119 595,127 720,127 L720,160 C595,160 595,152 470,152 Z" fill="url(#gFlg)"/>
+            <path d="M470,160 C595,160 595,168 720,168 L720,282 C595,282 595,274 470,274 Z" fill="url(#gRej)"/>
+
+            <!-- payer nodes -->
+            <rect x="30" y="24"  width="110" height="128" rx="5" fill="#0d9488"/>
+            <rect x="30" y="182" width="110" height="39"  rx="5" fill="#64748b"/>
+            <rect x="30" y="229" width="110" height="31"  rx="5" fill="#64748b"/>
+            <rect x="30" y="268" width="110" height="22"  rx="5" fill="#64748b"/>
+            <text class="slabel" x="40" y="50" fill="#fff">MCB</text><text class="scount" x="130" y="50" text-anchor="end" fill="#eafdfb">186</text>
+            <text class="slabel" x="40" y="206" fill="#fff">MCA</text><text class="scount" x="130" y="206" text-anchor="end" fill="#fff">48</text>
+            <text class="slabel" x="40" y="249" fill="#fff">MCD</text><text class="scount" x="130" y="249" text-anchor="end" fill="#fff">39</text>
+            <text class="slabel" x="40" y="284" fill="#fff">HMO</text><text class="scount" x="130" y="284" text-anchor="end" fill="#fff">27</text>
+
+            <!-- eligibility nodes -->
+            <rect x="360" y="24"  width="110" height="128" rx="5" fill="#0891b2"/>
+            <rect x="360" y="160" width="110" height="114" rx="5" fill="#94a3b8"/>
+            <text class="slabel" x="370" y="50" fill="#fff">Eligible</text><text class="scount" x="460" y="50" text-anchor="end" fill="#eafdfb">159</text>
+            <text class="slabel" x="370" y="186" fill="#fff">Ineligible</text><text class="scount" x="460" y="186" text-anchor="end" fill="#fff">141</text>
+
+            <!-- route nodes -->
+            <rect x="720" y="24"  width="110" height="95"  rx="5" fill="#10b981"/>
+            <rect x="720" y="127" width="110" height="33"  rx="5" fill="#f59e0b"/>
+            <rect x="720" y="168" width="110" height="114" rx="5" fill="#e11d48"/>
+            <text class="slabel" x="730" y="48" fill="#fff">Auto</text><text class="scount" x="820" y="48" text-anchor="end" fill="#fff">118</text>
+            <text class="slabel" x="730" y="147" fill="#fff">Flag</text><text class="scount" x="820" y="147" text-anchor="end" fill="#fff">41</text>
+            <text class="slabel" x="730" y="196" fill="#fff">Reject</text><text class="scount" x="820" y="196" text-anchor="end" fill="#fff">141</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRIAGE PREVIEW -->
+    <div class="panel" style="margin-top:16px">
+      <h2>Triage queue <span class="badge teal">300 cases</span></h2>
+      <p class="lede">Color + icon for every decision; confidence maps to cross-source agreement, not LLM self-report. Row → opens the evidence drill-down.</p>
+      <div class="filters" role="group" aria-label="Filter by route">
+        <button class="chip" aria-pressed="true">All <span class="num">300</span></button>
+        <button class="chip" aria-pressed="false"><span class="dot" style="background:var(--emerald)"></span>Auto <span class="num">118</span></button>
+        <button class="chip" aria-pressed="false"><span class="dot" style="background:var(--amber)"></span>Flag <span class="num">41</span></button>
+        <button class="chip" aria-pressed="false"><span class="dot" style="background:var(--rose)"></span>Reject <span class="num">141</span></button>
+      </div>
+      <div style="overflow-x:auto">
+      <table class="triage">
+        <thead><tr>
+          <th>Patient</th><th>Payer</th><th>Wound</th><th>L×W×D (cm)</th><th>Conf.</th><th>Route</th><th>Reason</th>
+        </tr></thead>
+        <tbody>
+          <tr class="row" tabindex="0">
+            <td><b>R. Okafor</b><br><span class="reason num">pid 10472</span></td>
+            <td><span class="pyr">MCB</span></td>
+            <td>DFU · stage 3 · L heel</td>
+            <td class="num">4.3 × 1.8 × 0.3</td>
+            <td><span class="gauge"><i style="width:94%"></i></span> <span class="num" style="font-size:11px">0.94</span></td>
+            <td><span class="rtag acc">✓ auto</span></td>
+            <td class="reason">MCB active, wound L97.421 in family, all sources agree, measured.</td>
+          </tr>
+          <tr class="row" tabindex="0">
+            <td><b>M. Delgado</b><br><span class="reason num">pid 10518</span></td>
+            <td><span class="pyr">MCB</span></td>
+            <td>Venous ulcer · L calf</td>
+            <td class="num">2.1 × 1.0 × —</td>
+            <td><span class="gauge"><i style="width:61%"></i></span> <span class="num" style="font-size:11px">0.61</span></td>
+            <td><span class="rtag flg">▲ flag</span></td>
+            <td class="reason">Depth missing (Envive note: <span class="num">Depth: N/A</span>) — unverified measurement caps conf.</td>
+          </tr>
+          <tr class="row" tabindex="0">
+            <td><b>T. Brennan</b><br><span class="reason num">pid 10604</span></td>
+            <td><span class="pyr">HMO</span></td>
+            <td>Pressure inj · sacrum</td>
+            <td class="num">3.0 × 2.4 × 0.5</td>
+            <td><span class="gauge"><i style="width:88%"></i></span> <span class="num" style="font-size:11px">0.88</span></td>
+            <td><span class="rtag rej">✕ reject</span></td>
+            <td class="reason">Payer HMO — not MCB-active; ineligible regardless of wound confidence.</td>
+          </tr>
+          <tr class="row" tabindex="0">
+            <td><b>A. Whitfield</b><br><span class="reason num">pid 10689</span></td>
+            <td><span class="pyr">MCB</span></td>
+            <td>DFU · stage 2 · R toe</td>
+            <td class="num">1.5 × 0.9 × 0.2</td>
+            <td><span class="gauge"><i style="width:91%"></i></span> <span class="num" style="font-size:11px">0.91</span></td>
+            <td><span class="rtag acc">✓ auto</span></td>
+            <td class="reason">SOAP + Multi-wound notes corroborate; span-verified numerics.</td>
+          </tr>
+          <tr class="row" tabindex="0">
+            <td><b>J. Castellanos</b><br><span class="reason num">pid 10733</span></td>
+            <td><span class="pyr">MCB</span></td>
+            <td>Multi-wound · 2 sites</td>
+            <td class="num">3.2×1.1 · 0.8×0.4</td>
+            <td><span class="gauge"><i style="width:58%"></i></span> <span class="num" style="font-size:11px">0.58</span></td>
+            <td><span class="rtag flg">▲ flag</span></td>
+            <td class="reason">Two wounds in one note; primary selection ambiguous — biller to confirm.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </section>
+
+  <p style="text-align:center;font-size:11px;color:var(--ink-faint);margin-top:22px">
+    woundpipe · Teal Command Deck (Variant B) — concept mockup · data is fake-real for demo · export.json schema-valid
+  </p>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var motionOK = !window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var body = document.body;
+
+  /* ---- feed state toggle (mission-control switch) ---- */
+  function setFeed(state){
+    body.setAttribute("data-feed", state);
+    document.querySelectorAll(".feedctl button").forEach(function(b){
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-feed") === state));
+    });
+    if(state === "live") runCountUps();
+    if(state === "live" && motionOK) requestAnimationFrame(measureTracks);
+  }
+  document.querySelectorAll(".feedctl button").forEach(function(b){
+    b.addEventListener("click", function(){ setFeed(b.getAttribute("data-feed")); });
+  });
+  document.querySelectorAll("[data-goto]").forEach(function(b){
+    b.addEventListener("click", function(){ setFeed(b.getAttribute("data-goto")); });
+  });
+
+  /* ---- count-ups (rAF, timestamp-based; resets to final under reduced motion) ---- */
+  function runCountUps(){
+    document.querySelectorAll(".countup").forEach(function(el){
+      var to = parseInt(el.getAttribute("data-to"), 10) || 0;
+      if(!motionOK){ el.textContent = to.toLocaleString(); return; }
+      var dur = 900, start = null;
+      function step(ts){
+        if(start === null) start = ts;
+        var p = Math.min(1, (ts - start) / dur);
+        var eased = 1 - Math.pow(1 - p, 3); /* ease-out */
+        el.textContent = Math.round(to * eased).toLocaleString();
+        if(p < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  /* ---- particle track length = connector width (keeps flow exact + responsive) ---- */
+  function measureTracks(){
+    document.querySelectorAll("#spine .conn").forEach(function(c){
+      var w = c.clientWidth;
+      c.querySelectorAll(".pkt").forEach(function(p){ p.style.setProperty("--track", w + "px"); });
+    });
+  }
+  var rT;
+  window.addEventListener("resize", function(){
+    clearTimeout(rT);
+    rT = setTimeout(function(){ if(body.getAttribute("data-feed") === "live") measureTracks(); }, 120);
+  });
+
+  /* ---- triage filter chips (single-select, concept) ---- */
+  document.querySelectorAll(".filters .chip").forEach(function(chip){
+    chip.addEventListener("click", function(){
+      document.querySelectorAll(".filters .chip").forEach(function(c){ c.setAttribute("aria-pressed","false"); });
+      chip.setAttribute("aria-pressed","true");
+    });
+  });
+
+  /* ---- keyboard: Enter/Space on a triage row (concept drill-down) ---- */
+  document.querySelectorAll("table.triage tr.row").forEach(function(r){
+    r.addEventListener("keydown", function(e){
+      if(e.key === "Enter" || e.key === " "){ e.preventDefault(); r.style.outline = "2px solid var(--teal)"; }
+    });
+  });
+
+  /* init */
+  runCountUps();
+  if(motionOK) requestAnimationFrame(measureTracks);
+})();
+</script>
+</body>
+</html>

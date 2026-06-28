@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+# Data & secrets
+.env
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/raw/
+data/runs/
+data/snapshots/
+data/export.json
+# Frontend
+frontend/node_modules/
+frontend/dist/
+# OS
+.DS_Store

@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>woundpipe · Command Center — Calm Clinical Glass (Variant A)</title>
+<style>
+  /* ============================================================
+     VARIANT A — "Calm Clinical Glass"
+     White-dominant glassmorphism · single teal accent (#0d9488)
+     Tokens mirror design-system.md motion contract.
+     ============================================================ */
+  :root{
+    /* color */
+    --ink:#0f2622;            /* deep teal-ink for text */
+    --ink-soft:#4b6460;
+    --ink-faint:#7e948f;
+    --teal:#0d9488;          /* the one accent */
+    --teal-deep:#0b7a70;
+    --teal-wash:#e7f6f4;
+    --glass:rgba(255,255,255,0.62);
+    --glass-strong:rgba(255,255,255,0.78);
+    --hairline:rgba(13,148,136,0.16);
+    --hairline-soft:rgba(15,38,34,0.07);
+    --amber:#c98a18;
+    --amber-wash:#fbf2dd;
+    --rose:#c0556a;
+    --rose-wash:#f8e7eb;
+    --good:#0d9488;
+    --good-wash:#e7f6f4;
+    /* space */
+    --s1:6px; --s2:12px; --s3:20px; --s4:32px; --s5:52px;
+    /* radius */
+    --r-card:24px; --r-chip:999px; --r-soft:14px;
+    /* elevation — soft long shadows */
+    --shadow-lift:0 1px 1px rgba(15,38,34,0.03),0 12px 24px -12px rgba(13,148,136,0.18),0 40px 60px -40px rgba(15,38,34,0.22);
+    --shadow-flat:0 1px 0 rgba(15,38,34,0.03),0 18px 40px -28px rgba(15,38,34,0.18);
+    /* motion (design-system.md tokens) */
+    --dur-micro:200ms; --dur-large:400ms;
+    --ease-enter:cubic-bezier(0,0,0,1);
+    --ease-exit:cubic-bezier(0.3,0,1,1);
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--sans);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    min-height:100vh;
+    /* white → pale-teal gradient mesh */
+    background-color:#f6fbfa;
+    background-image:
+      radial-gradient(60% 55% at 12% 8%, rgba(13,148,136,0.10) 0%, rgba(13,148,136,0) 60%),
+      radial-gradient(55% 50% at 92% 4%, rgba(56,189,178,0.12) 0%, rgba(56,189,178,0) 55%),
+      radial-gradient(70% 60% at 82% 92%, rgba(13,148,136,0.08) 0%, rgba(13,148,136,0) 60%),
+      radial-gradient(50% 55% at 30% 100%, rgba(125,211,201,0.10) 0%, rgba(125,211,201,0) 60%),
+      linear-gradient(160deg,#ffffff 0%,#f3faf9 48%,#eef8f6 100%);
+    background-attachment:fixed;
+  }
+
+  .wrap{max-width:1240px;margin:0 auto;padding:var(--s4) var(--s4) var(--s5);}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    gap:var(--s3);margin-bottom:var(--s4);
+  }
+  .brand{display:flex;align-items:center;gap:var(--s2);}
+  .mark{
+    width:38px;height:38px;border-radius:12px;
+    background:linear-gradient(150deg,var(--teal),#39c2b3);
+    box-shadow:0 6px 16px -6px rgba(13,148,136,0.6);
+    display:grid;place-items:center;flex:none;
+  }
+  .mark svg{width:22px;height:22px;}
+  .brand h1{font-size:18px;letter-spacing:-0.01em;margin:0;font-weight:650;}
+  .brand .sub{font-size:12.5px;color:var(--ink-faint);margin-top:1px;letter-spacing:0.01em;}
+  .topbar-right{display:flex;align-items:center;gap:var(--s2);}
+  .run-chip{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:12px;color:var(--ink-soft);
+    background:var(--glass);border:1px solid var(--hairline);
+    border-radius:var(--r-chip);padding:7px 14px;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:var(--shadow-flat);
+  }
+  .pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);position:relative;flex:none;}
+  .pulse-dot::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--teal);}
+  .ghost-btn{
+    font-family:var(--sans);font-size:13px;font-weight:550;color:var(--teal-deep);
+    background:var(--glass-strong);border:1px solid var(--hairline);
+    border-radius:var(--r-chip);padding:9px 16px;cursor:pointer;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:var(--shadow-flat);transition:none;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .ghost-btn{transition:transform var(--dur-micro) var(--ease-enter),box-shadow var(--dur-micro) var(--ease-enter);}
+    .pulse-dot::after{animation:halo 2.4s ease-out infinite;}
+    @keyframes halo{0%{transform:scale(1);opacity:0.5;}70%,100%{transform:scale(3.4);opacity:0;}}
+  }
+  .ghost-btn:hover{transform:translateY(-1px);box-shadow:var(--shadow-lift);}
+  .ghost-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+
+  /* ---------- section heading ---------- */
+  .eyebrow{
+    font-size:11.5px;font-weight:600;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--teal-deep);margin:0 0 4px;
+  }
+  .lede{font-size:14px;color:var(--ink-soft);margin:0;max-width:62ch;line-height:1.5;}
+  .section-head{margin-bottom:var(--s3);}
+
+  /* ---------- KPI cards ---------- */
+  .kpi-row{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s3);
+    margin-bottom:var(--s4);
+  }
+  .glass{
+    background:var(--glass);
+    border:1px solid var(--hairline);
+    border-radius:var(--r-card);
+    backdrop-filter:blur(22px) saturate(1.4);
+    -webkit-backdrop-filter:blur(22px) saturate(1.4);
+    box-shadow:var(--shadow-lift);
+    position:relative;overflow:hidden;
+  }
+  .glass::before{
+    /* top sheen hairline */
+    content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,0.7),rgba(255,255,255,0) 40%);
+    opacity:0.7;
+  }
+  .kpi{padding:22px 22px 20px;}
+  .kpi .label{font-size:12.5px;color:var(--ink-faint);font-weight:550;letter-spacing:0.01em;display:flex;align-items:center;gap:7px;}
+  .kpi .num{
+    font-family:var(--mono);font-size:42px;line-height:1.04;letter-spacing:-0.02em;
+    margin:12px 0 2px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;
+  }
+  .kpi .num.accent{color:var(--teal-deep);}
+  .kpi .foot{font-size:12.5px;color:var(--ink-soft);display:flex;align-items:center;gap:7px;}
+  .kpi .micro-bar{height:5px;border-radius:999px;background:var(--hairline-soft);margin-top:14px;overflow:hidden;}
+  .kpi .micro-bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--teal),#43c6b7);}
+  .tag{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:var(--r-chip);font-weight:600;}
+  .tag.up{background:var(--good-wash);color:var(--teal-deep);}
+  .ico{width:15px;height:15px;color:var(--teal);flex:none;}
+
+  /* ---------- pipeline strip ---------- */
+  .panel{padding:26px 28px;margin-bottom:var(--s4);}
+  .pipe-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);margin-bottom:22px;flex-wrap:wrap;}
+  .pipe-legend{display:flex;gap:16px;font-size:12px;color:var(--ink-soft);flex-wrap:wrap;}
+  .pipe-legend span{display:inline-flex;align-items:center;gap:6px;}
+  .lg-dot{width:8px;height:8px;border-radius:50%;}
+
+  .pipeline{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:0;align-items:start;}
+  .stage{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 6px;z-index:2;}
+  .stage .node{
+    width:60px;height:60px;border-radius:18px;flex:none;
+    background:var(--glass-strong);border:1px solid var(--hairline);
+    box-shadow:var(--shadow-flat);
+    display:grid;place-items:center;color:var(--teal-deep);
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    position:relative;
+  }
+  .stage .node svg{width:26px;height:26px;}
+  .stage .nm{font-size:12.5px;font-weight:600;margin-top:12px;color:var(--ink);letter-spacing:0.01em;}
+  .stage .ct{font-family:var(--mono);font-size:12px;color:var(--ink-faint);margin-top:3px;font-variant-numeric:tabular-nums;}
+  .stage .ct b{color:var(--teal-deep);font-weight:600;}
+
+  /* the flowing rail behind nodes */
+  .rail{
+    position:absolute;left:8%;right:8%;top:30px;height:2px;
+    background:linear-gradient(90deg,var(--hairline),rgba(13,148,136,0.28),var(--hairline));
+    z-index:1;border-radius:2px;overflow:visible;
+  }
+  .flow-dot{
+    position:absolute;top:50%;left:0;width:7px;height:7px;border-radius:50%;
+    background:var(--teal);box-shadow:0 0 0 3px rgba(13,148,136,0.16);
+    transform:translate(-50%,-50%);opacity:0;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .flow-dot{animation:travel 4.6s linear infinite;}
+    .flow-dot.d2{animation-delay:1.15s;}
+    .flow-dot.d3{animation-delay:2.3s;}
+    .flow-dot.d4{animation-delay:3.45s;}
+    @keyframes travel{
+      0%{left:0;opacity:0;}
+      6%{opacity:1;}
+      94%{opacity:1;}
+      100%{left:100%;opacity:0;}
+    }
+    .node-amber{animation:amberglow 3.2s ease-in-out infinite;}
+    @keyframes amberglow{0%,100%{box-shadow:var(--shadow-flat);}50%{box-shadow:0 0 0 4px rgba(201,138,24,0.12),var(--shadow-flat);}}
+  }
+  .retry-badge{
+    position:absolute;top:-7px;right:-9px;
+    font-family:var(--mono);font-size:10px;font-weight:600;
+    background:var(--amber-wash);color:var(--amber);border:1px solid rgba(201,138,24,0.3);
+    border-radius:var(--r-chip);padding:1px 7px;white-space:nowrap;
+  }
+
+  /* outcomes chips after pipeline */
+  .outcomes{display:flex;gap:var(--s2);justify-content:center;margin-top:26px;flex-wrap:wrap;}
+  .out-chip{
+    display:inline-flex;align-items:center;gap:9px;
+    background:var(--glass-strong);border:1px solid var(--hairline);
+    border-radius:var(--r-chip);padding:9px 16px 9px 12px;
+    box-shadow:var(--shadow-flat);
+  }
+  .out-chip .swatch{width:10px;height:10px;border-radius:50%;flex:none;}
+  .out-chip .ol{font-size:12.5px;color:var(--ink-soft);font-weight:550;}
+  .out-chip .ov{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+
+  /* ---------- lower grid: donut + funnel ---------- */
+  .lower{display:grid;grid-template-columns:1fr 1.25fr;gap:var(--s3);margin-bottom:var(--s4);}
+  .donut-wrap{display:flex;gap:26px;align-items:center;}
+  .donut{position:relative;width:188px;height:188px;flex:none;}
+  .donut svg{transform:rotate(-90deg);}
+  .donut .center{
+    position:absolute;inset:0;display:grid;place-content:center;text-align:center;
+  }
+  .donut .center .big{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-0.02em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1;}
+  .donut .center .cap{font-size:11px;color:var(--ink-faint);letter-spacing:0.08em;text-transform:uppercase;margin-top:5px;}
+  /* whole-donut fade-in keeps each segment's positioning offset intact (resting state: fully visible) */
+  @media (prefers-reduced-motion: no-preference){
+    .donut{opacity:0;animation:donutIn var(--dur-large) var(--ease-enter) 80ms forwards;}
+    @keyframes donutIn{to{opacity:1;}}
+  }
+  .legend-list{display:flex;flex-direction:column;gap:14px;flex:1;}
+  .lrow{display:flex;align-items:center;gap:12px;}
+  .lrow .sw{width:12px;height:12px;border-radius:4px;flex:none;}
+  .lrow .lk{flex:1;}
+  .lrow .lk .lt{font-size:13.5px;font-weight:600;color:var(--ink);}
+  .lrow .lk .ld{font-size:12px;color:var(--ink-faint);margin-top:1px;}
+  .lrow .lv{font-family:var(--mono);font-size:16px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+  .lrow .lp{font-family:var(--mono);font-size:12px;color:var(--ink-soft);width:42px;text-align:right;}
+
+  /* funnel */
+  .funnel{display:flex;flex-direction:column;gap:11px;}
+  .frow{display:grid;grid-template-columns:170px 1fr 64px;align-items:center;gap:14px;}
+  .frow .fl{font-size:13px;color:var(--ink-soft);font-weight:550;}
+  .frow .ftrack{height:34px;border-radius:10px;background:rgba(13,148,136,0.06);position:relative;overflow:hidden;}
+  .frow .ffill{
+    position:absolute;top:0;left:0;height:100%;border-radius:10px;
+    background:linear-gradient(90deg,rgba(13,148,136,0.85),rgba(67,198,183,0.85));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,0.35);
+    display:flex;align-items:center;
+    transform-origin:left center;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .frow .ffill{transform:scaleX(0);animation:grow var(--dur-large) var(--ease-enter) forwards;}
+    @keyframes grow{to{transform:scaleX(1);}}
+  }
+  .frow .fv{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink);text-align:right;font-variant-numeric:tabular-nums;}
+  .frow .fnote{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:11px;color:rgba(255,255,255,0.92);font-weight:600;}
+
+  /* ---------- triage table ---------- */
+  .table-card{padding:0;overflow:hidden;}
+  .tcard-head{display:flex;align-items:center;justify-content:space-between;padding:22px 26px 16px;gap:var(--s3);flex-wrap:wrap;}
+  .seg{display:inline-flex;background:rgba(13,148,136,0.06);border:1px solid var(--hairline-soft);border-radius:var(--r-chip);padding:3px;gap:2px;}
+  .seg button{
+    font-family:var(--sans);font-size:12.5px;font-weight:550;color:var(--ink-soft);
+    background:none;border:0;border-radius:var(--r-chip);padding:6px 14px;cursor:pointer;
+  }
+  @media (prefers-reduced-motion: no-preference){.seg button{transition:color var(--dur-micro),background var(--dur-micro);}}
+  .seg button[aria-pressed="true"]{background:var(--glass-strong);color:var(--teal-deep);box-shadow:var(--shadow-flat);}
+  .seg button:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+  .search{
+    display:inline-flex;align-items:center;gap:8px;
+    background:var(--glass-strong);border:1px solid var(--hairline);border-radius:var(--r-chip);
+    padding:8px 14px;color:var(--ink-faint);font-size:12.5px;box-shadow:var(--shadow-flat);
+  }
+  .search input{border:0;background:none;outline:none;font-family:var(--sans);font-size:13px;color:var(--ink);width:150px;}
+
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-faint);
+    text-align:left;padding:11px 26px;border-bottom:1px solid var(--hairline-soft);
+    position:sticky;top:0;background:rgba(255,255,255,0.66);backdrop-filter:blur(10px);
+  }
+  thead th.r{text-align:right;}
+  tbody td{padding:15px 26px;border-bottom:1px solid var(--hairline-soft);font-size:13.5px;vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:0;}
+  @media (prefers-reduced-motion: no-preference){tbody tr{transition:background var(--dur-micro) var(--ease-enter);}}
+  tbody tr:hover{background:rgba(13,148,136,0.045);}
+  .pid{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);}
+  .pname{font-weight:600;color:var(--ink);}
+  .wsum{color:var(--ink-soft);font-size:12.5px;}
+  .wsum .meas{font-family:var(--mono);color:var(--ink);}
+  .payer{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:var(--r-chip);background:var(--teal-wash);color:var(--teal-deep);border:1px solid var(--hairline);}
+  .payer.off{background:rgba(15,38,34,0.05);color:var(--ink-faint);border-color:var(--hairline-soft);}
+
+  /* confidence segmented gauge */
+  .conf{display:flex;align-items:center;gap:9px;}
+  .conf .bars{display:flex;gap:3px;}
+  .conf .bars i{width:5px;height:16px;border-radius:2px;background:rgba(15,38,34,0.12);}
+  .conf .bars i.on{background:var(--teal);}
+  .conf .bars i.on.amber{background:var(--amber);}
+  .conf .bars i.on.rose{background:var(--rose);}
+  .conf .pct{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+
+  /* route pill — color + icon (never color alone) */
+  .route{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;padding:5px 12px 5px 9px;border-radius:var(--r-chip);}
+  .route svg{width:14px;height:14px;flex:none;}
+  .route.accept{background:var(--good-wash);color:var(--teal-deep);}
+  .route.flag{background:var(--amber-wash);color:var(--amber);}
+  .route.reject{background:var(--rose-wash);color:var(--rose);}
+  .reason{color:var(--ink-faint);font-size:12px;margin-top:3px;line-height:1.4;}
+
+  .drill{
+    background:none;border:1px solid var(--hairline);border-radius:var(--r-chip);
+    width:30px;height:30px;display:grid;place-items:center;cursor:pointer;color:var(--teal-deep);
+    box-shadow:var(--shadow-flat);
+  }
+  @media (prefers-reduced-motion: no-preference){.drill{transition:transform var(--dur-micro) var(--ease-enter);}}
+  .drill:hover{transform:translateX(2px);}
+  .drill:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+
+  /* ---------- states (empty / loading / error) ---------- */
+  .states-rail{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3);margin-top:var(--s4);}
+  .state-box{padding:24px;text-align:center;}
+  .state-box .si{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;margin:0 auto 14px;}
+  .state-box h4{margin:0 0 5px;font-size:14px;font-weight:600;}
+  .state-box p{margin:0;font-size:12.5px;color:var(--ink-faint);line-height:1.5;}
+  .si.empty{background:var(--teal-wash);color:var(--teal-deep);}
+  .si.load{background:var(--teal-wash);color:var(--teal-deep);}
+  .si.err{background:var(--rose-wash);color:var(--rose);}
+
+  /* skeleton shimmer rows for loading state */
+  .skel-row{display:flex;gap:12px;align-items:center;margin-top:12px;}
+  .skel{height:11px;border-radius:6px;background:linear-gradient(90deg,rgba(13,148,136,0.08),rgba(13,148,136,0.16),rgba(13,148,136,0.08));background-size:200% 100%;}
+  @media (prefers-reduced-motion: no-preference){.skel{animation:shimmer 1.4s linear infinite;}@keyframes shimmer{to{background-position:-200% 0;}}}
+  .skel.w1{width:34%;} .skel.w2{width:22%;} .skel.w3{width:16%;}
+
+  .footer{margin-top:var(--s5);text-align:center;font-size:12px;color:var(--ink-faint);font-family:var(--mono);}
+  .footer a{color:var(--teal-deep);text-decoration:none;}
+
+  .vlabel{position:fixed;top:14px;left:14px;font-family:var(--mono);font-size:10.5px;color:var(--ink-faint);background:var(--glass);border:1px solid var(--hairline);border-radius:var(--r-chip);padding:4px 10px;backdrop-filter:blur(10px);z-index:50;}
+
+  @media (max-width:980px){
+    .kpi-row{grid-template-columns:repeat(2,1fr);}
+    .lower{grid-template-columns:1fr;}
+    .pipeline{grid-template-columns:repeat(3,1fr);row-gap:28px;}
+    .rail{display:none;}
+    .states-rail{grid-template-columns:1fr;}
+  }
+  @media (max-width:620px){
+    .wrap{padding:var(--s3);}
+    .kpi-row{grid-template-columns:1fr;}
+    .donut-wrap{flex-direction:column;}
+    .frow{grid-template-columns:1fr;gap:5px;}
+  }
+</style>
+</head>
+<body>
+  <span class="vlabel">Variant A · Calm Clinical Glass</span>
+  <div class="wrap">
+
+    <!-- ===== TOP BAR ===== -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h3l2-6 4 14 3-9 2 4h4"/>
+          </svg>
+        </div>
+        <div>
+          <h1>woundpipe</h1>
+          <div class="sub">Billing-triage command center</div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="run-chip"><span class="pulse-dot" aria-hidden="true"></span>run_2026‑06‑28T09:14Z · snapshot</span>
+        <button class="ghost-btn" type="button">Export JSON</button>
+      </div>
+    </header>
+
+    <!-- ===== HERO HEADING ===== -->
+    <div class="section-head">
+      <p class="eyebrow">Latest run · 300 patients pulled from PCC</p>
+      <p class="lede">Cross-source corroboration routed every patient with a plain-English reason. Confidence reflects agreement between extracted note fields — not model self-report.</p>
+    </div>
+
+    <!-- ===== KPI CARDS ===== -->
+    <section class="kpi-row" aria-label="Key metrics">
+      <article class="glass kpi">
+        <div class="label">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+          Patients ingested
+        </div>
+        <div class="num">300</div>
+        <div class="foot">287 extracted · <span class="tag up">96% yield</span></div>
+        <div class="micro-bar"><i style="width:95.6%"></i></div>
+      </article>
+
+      <article class="glass kpi">
+        <div class="label">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"/><path d="m9 12 2 2 4-4"/></svg>
+          MCB-active coverage
+        </div>
+        <div class="num accent">186</div>
+        <div class="foot">of 300 · <span class="tag up">62% eligible payer</span></div>
+        <div class="micro-bar"><i style="width:62%"></i></div>
+      </article>
+
+      <article class="glass kpi">
+        <div class="label">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          Auto-accepted
+        </div>
+        <div class="num">118</div>
+        <div class="foot">conf ≥ 0.80 · agreement met</div>
+        <div class="micro-bar"><i style="width:39.3%"></i></div>
+      </article>
+
+      <article class="glass kpi">
+        <div class="label">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          Flagged for review
+        </div>
+        <div class="num" style="color:var(--amber)">41</div>
+        <div class="foot">141 rejected · queue triaged</div>
+        <div class="micro-bar"><i style="width:13.7%;background:linear-gradient(90deg,#c98a18,#e0b24c)"></i></div>
+      </article>
+    </section>
+
+    <!-- ===== PIPELINE FLOW STRIP ===== -->
+    <section class="glass panel" aria-label="Pipeline run flow">
+      <div class="pipe-head">
+        <div class="section-head" style="margin:0">
+          <p class="eyebrow" style="margin:0">Pipeline run · S0 → S6</p>
+          <p class="lede" style="font-size:13px">API → fetch → sniff → extract → database → route, with live per-stage volume.</p>
+        </div>
+        <div class="pipe-legend">
+          <span><span class="lg-dot" style="background:var(--teal)"></span>in flight</span>
+          <span><span class="lg-dot" style="background:var(--amber)"></span>429 retry</span>
+          <span><span class="lg-dot" style="background:var(--ink-faint)"></span>persisted</span>
+        </div>
+      </div>
+
+      <div class="pipeline">
+        <div class="rail" aria-hidden="true">
+          <span class="flow-dot d1"></span><span class="flow-dot d2"></span><span class="flow-dot d3"></span><span class="flow-dot d4"></span>
+        </div>
+
+        <!-- S0 API -->
+        <div class="stage">
+          <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg></div>
+          <div class="nm">PCC API</div>
+          <div class="ct"><b>300</b> records</div>
+        </div>
+        <!-- S0 Fetch -->
+        <div class="stage">
+          <div class="node node-amber"><span class="retry-badge">↻ 360</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.99 6.57 2.6"/><path d="M21 3v6h-6"/></svg></div>
+          <div class="nm">Fetch + Retry</div>
+          <div class="ct"><b>1,203</b> calls</div>
+        </div>
+        <!-- S3 Sniff -->
+        <div class="stage">
+          <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
+          <div class="nm">Format Sniff</div>
+          <div class="ct"><b>4</b> note types</div>
+        </div>
+        <!-- S4 Extract -->
+        <div class="stage">
+          <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></div>
+          <div class="nm">Extract</div>
+          <div class="ct"><b>287</b> wounds</div>
+        </div>
+        <!-- S6 DB -->
+        <div class="stage">
+          <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6a9 3 0 0 0 18 0V5"/><path d="M3 11v6a9 3 0 0 0 18 0v-6"/></svg></div>
+          <div class="nm">SQLite</div>
+          <div class="ct"><b>287</b> rows</div>
+        </div>
+        <!-- S5 Route -->
+        <div class="stage">
+          <div class="node"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg></div>
+          <div class="nm">Route</div>
+          <div class="ct"><b>300</b> decided</div>
+        </div>
+      </div>
+
+      <!-- outcomes -->
+      <div class="outcomes">
+        <div class="out-chip"><span class="swatch" style="background:var(--teal)"></span><span class="ol">auto_accept</span><span class="ov">118</span></div>
+        <div class="out-chip"><span class="swatch" style="background:var(--amber)"></span><span class="ol">flag_for_review</span><span class="ov">41</span></div>
+        <div class="out-chip"><span class="swatch" style="background:var(--rose)"></span><span class="ol">reject</span><span class="ov">141</span></div>
+      </div>
+    </section>
+
+    <!-- ===== DONUT + FUNNEL ===== -->
+    <section class="lower">
+      <!-- routing donut -->
+      <article class="glass panel" aria-label="Routing distribution">
+        <div class="section-head" style="margin-bottom:18px">
+          <p class="eyebrow" style="margin:0">Routing outcomes</p>
+          <p class="lede" style="font-size:13px">300 decisions across three lanes.</p>
+        </div>
+        <div class="donut-wrap">
+          <div class="donut" role="img" aria-label="Routing donut: 118 auto-accept, 41 flag, 141 reject">
+            <!-- circumference for r=80 = 502.65; segments scaled to 300 -->
+            <svg width="188" height="188" viewBox="0 0 188 188">
+              <circle cx="94" cy="94" r="80" fill="none" stroke="rgba(15,38,34,0.06)" stroke-width="20"/>
+              <!-- reject 141/300 = 47% → 236.2 -->
+              <circle cx="94" cy="94" r="80" fill="none" stroke="var(--rose)" stroke-width="20" stroke-linecap="round"
+                      stroke-dasharray="236.2 266.5"></circle>
+              <!-- flag 41/300 = 13.67% → 68.7, offset after reject -->
+              <circle cx="94" cy="94" r="80" fill="none" stroke="var(--amber)" stroke-width="20" stroke-linecap="round"
+                      stroke-dasharray="68.7 433.9" stroke-dashoffset="-236.2"></circle>
+              <!-- auto_accept 118/300 = 39.33% → 197.7, offset after reject+flag -->
+              <circle cx="94" cy="94" r="80" fill="none" stroke="var(--teal)" stroke-width="20" stroke-linecap="round"
+                      stroke-dasharray="197.7 304.9" stroke-dashoffset="-304.9"></circle>
+            </svg>
+            <div class="center"><div class="big">300</div><div class="cap">routed</div></div>
+          </div>
+          <div class="legend-list">
+            <div class="lrow"><span class="sw" style="background:var(--teal)"></span><div class="lk"><div class="lt">auto_accept</div><div class="ld">clean · agreement · conf ≥ 0.80</div></div><span class="lv">118</span><span class="lp">39%</span></div>
+            <div class="lrow"><span class="sw" style="background:var(--amber)"></span><div class="lk"><div class="lt">flag_for_review</div><div class="ld">conflict or missing measurement</div></div><span class="lv">41</span><span class="lp">14%</span></div>
+            <div class="lrow"><span class="sw" style="background:var(--rose)"></span><div class="lk"><div class="lt">reject</div><div class="ld">no active wound or non-MCB</div></div><span class="lv">141</span><span class="lp">47%</span></div>
+          </div>
+        </div>
+      </article>
+
+      <!-- eligibility funnel -->
+      <article class="glass panel" aria-label="Eligibility funnel">
+        <div class="section-head" style="margin-bottom:18px">
+          <p class="eyebrow" style="margin:0">Eligibility funnel</p>
+          <p class="lede" style="font-size:13px">Where the 300 narrow to a clean auto-accept.</p>
+        </div>
+        <div class="funnel">
+          <div class="frow"><span class="fl">Patients pulled</span><div class="ftrack"><div class="ffill" style="width:100%"><span class="fnote">300</span></div></div><span class="fv">100%</span></div>
+          <div class="frow"><span class="fl">MCB-active payer</span><div class="ftrack"><div class="ffill" style="width:62%;animation-delay:60ms"><span class="fnote">186</span></div></div><span class="fv">62%</span></div>
+          <div class="frow"><span class="fl">Active wound dx</span><div class="ftrack"><div class="ffill" style="width:51.3%;animation-delay:120ms"><span class="fnote">154</span></div></div><span class="fv">51%</span></div>
+          <div class="frow"><span class="fl">Has measurements</span><div class="ftrack"><div class="ffill" style="width:44%;animation-delay:180ms"><span class="fnote">132</span></div></div><span class="fv">44%</span></div>
+          <div class="frow"><span class="fl">Auto-accepted</span><div class="ftrack"><div class="ffill" style="width:39.3%;animation-delay:240ms"><span class="fnote">118</span></div></div><span class="fv">39%</span></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ===== TRIAGE TABLE ===== -->
+    <section class="glass table-card" aria-label="Patient triage">
+      <div class="tcard-head">
+        <div class="section-head" style="margin:0">
+          <p class="eyebrow" style="margin:0">Triage queue</p>
+          <p class="lede" style="font-size:13px">Sorted by review priority. Click any row to open the evidence drill-down.</p>
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <div class="seg" role="group" aria-label="Filter by route">
+            <button type="button" aria-pressed="true">All</button>
+            <button type="button" aria-pressed="false">Accept</button>
+            <button type="button" aria-pressed="false">Flag</button>
+            <button type="button" aria-pressed="false">Reject</button>
+          </div>
+          <label class="search">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" placeholder="Search patient or dx…" aria-label="Search patients">
+          </label>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Patient</th>
+            <th>Payer</th>
+            <th>Wound summary</th>
+            <th>Confidence</th>
+            <th>Route · reason</th>
+            <th class="r"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- flagged first (priority) -->
+          <tr>
+            <td><div class="pname">Dolores Hartman</div><div class="pid">pt_01847 · 74F</div></td>
+            <td><span class="payer">MCB</span></td>
+            <td class="wsum">DFU, R heel · <span class="meas">N/A × N/A × N/A</span><br>Envive · moderate drainage</td>
+            <td><div class="conf"><div class="bars"><i class="on amber"></i><i class="on amber"></i><i class="on amber"></i><i></i><i></i></div><span class="pct">0.58</span></div></td>
+            <td><span class="route flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>flag</span><div class="reason">Stage reads “N/A”; no measurements to corroborate.</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Dolores Hartman"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+          <tr>
+            <td><div class="pname">Marcus Whitfield</div><div class="pid">pt_02093 · 68M</div></td>
+            <td><span class="payer">MCB</span></td>
+            <td class="wsum">Venous ulcer, L calf · <span class="meas">3.1 × 2.0 × 0.4 cm</span><br>Multi-wound prose</td>
+            <td><div class="conf"><div class="bars"><i class="on amber"></i><i class="on amber"></i><i class="on amber"></i><i class="on amber"></i><i></i></div><span class="pct">0.71</span></div></td>
+            <td><span class="route flag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>flag</span><div class="reason">Two wounds in note; primary selection below threshold.</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Marcus Whitfield"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+          <!-- accepts -->
+          <tr>
+            <td><div class="pname">Aisha Okonkwo</div><div class="pid">pt_00412 · 59F</div></td>
+            <td><span class="payer">MCB</span></td>
+            <td class="wsum">Pressure ulcer stage 3, sacrum · <span class="meas">4.3 × 1.8 × 0.3 cm</span><br>SOAP note</td>
+            <td><div class="conf"><div class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="pct">0.94</span></div></td>
+            <td><span class="route accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>auto_accept</span><div class="reason">All fields agree across SOAP + structured; conf ≥ 0.80.</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Aisha Okonkwo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+          <tr>
+            <td><div class="pname">Robert Calloway</div><div class="pid">pt_01156 · 81M</div></td>
+            <td><span class="payer">MCB</span></td>
+            <td class="wsum">DFU, plantar L · <span class="meas">2.0 × 1.5 × 0.6 cm</span><br>SOAP note · scant drainage</td>
+            <td><div class="conf"><div class="bars"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></div><span class="pct">0.88</span></div></td>
+            <td><span class="route accept"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>auto_accept</span><div class="reason">L97.5 active; measurements span-verified in note text.</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Robert Calloway"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+          <!-- rejects -->
+          <tr>
+            <td><div class="pname">Priya Raman</div><div class="pid">pt_02781 · 47F</div></td>
+            <td><span class="payer off">HMO</span></td>
+            <td class="wsum">Surgical wound, abdomen · <span class="meas">5.0 × 2.2 × 1.0 cm</span><br>Prose note</td>
+            <td><div class="conf"><div class="bars"><i class="on rose"></i><i class="on rose"></i><i class="on rose"></i><i class="on rose"></i><i></i></div><span class="pct">0.79</span></div></td>
+            <td><span class="route reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>reject</span><div class="reason">Non-MCB payer (HMO); ineligible regardless of wound.</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Priya Raman"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+          <tr>
+            <td><div class="pname">Earl Mendoza</div><div class="pid">pt_00937 · 63M</div></td>
+            <td><span class="payer">MCB</span></td>
+            <td class="wsum">Abrasion S81.0, knee · <span class="meas">1.2 × 0.8 cm</span><br>Prose note</td>
+            <td><div class="conf"><div class="bars"><i class="on rose"></i><i class="on rose"></i><i class="on rose"></i><i></i><i></i></div><span class="pct">0.64</span></div></td>
+            <td><span class="route reject"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m6 6 12 12"/></svg>reject</span><div class="reason">Dx S81.0 outside wound-care families (out of scope).</div></td>
+            <td class="r"><button class="drill" aria-label="Open evidence for Earl Mendoza"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ===== FULL-STATE RAIL (empty / loading / error) ===== -->
+    <section class="states-rail" aria-label="Surface states">
+      <article class="glass state-box">
+        <div class="si load" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.85.99 6.57 2.6"/><path d="M21 3v6h-6"/></svg></div>
+        <h4>Loading — run in progress</h4>
+        <p>Skeleton rows shimmer while S4 extraction streams in.</p>
+        <div class="skel-row"><span class="skel w1"></span><span class="skel w3"></span><span class="skel w2"></span></div>
+        <div class="skel-row"><span class="skel w2"></span><span class="skel w1"></span><span class="skel w3"></span></div>
+      </article>
+      <article class="glass state-box">
+        <div class="si empty" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div>
+        <h4>Empty — no matches</h4>
+        <p>No patients match this filter. Clear the search or switch lanes to see the full queue of 300.</p>
+      </article>
+      <article class="glass state-box">
+        <div class="si err" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+        <h4>Error — snapshot unreachable</h4>
+        <p>export.json failed to load. Showing last good run from 09:14Z. <a href="#" style="color:var(--rose);font-weight:600">Retry</a></p>
+      </article>
+    </section>
+
+    <footer class="footer">
+      woundpipe · auto_accept_tau = 0.80 · confidence = cross-source corroboration · snapshot via VACUUM INTO
+    </footer>
+  </div>
+
+  <script>
+    // Segmented control — pressed-state toggle (keyboard + mouse reachable)
+    document.querySelectorAll('.seg').forEach(group=>{
+      group.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          group.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed','false'));
+          btn.setAttribute('aria-pressed','true');
+        });
+      });
+    });
+  </script>
+</body>
+</html>
