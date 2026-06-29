@@ -6,6 +6,7 @@ Validated against the real archetypes (0 misses).
 """
 from __future__ import annotations
 
+import difflib
 import re
 
 NUM = r"\d+(?:\.\d+)?"
@@ -35,8 +36,9 @@ DRAIN_MAP = {
     "none": "none", "no drainage": "none",
 }
 _LAT = r"(?:right|left|bilateral|\bR\b|\bL\b)"
-_SITE = (r"(?:hip|buttock|sacrum|coccyx|heel|plantar|foot|ankle|trochanter|"
-         r"ischium|toe|leg|knee|elbow|back|trunk|shoulder)")
+# longer multi-word sites first so "lower leg" wins over the bare "leg" alternative.
+_SITE = (r"(?:lower\s+leg|lower\s+extremity|hip|buttock|sacrum|coccyx|heel|plantar|foot|ankle|"
+         r"trochanter|ischium|toe|knee|elbow|back|trunk|shoulder|leg)")
 LOC = re.compile(rf"(?P<lat>{_LAT})\s+(?P<site>{_SITE})", re.I)
 _TYPE_HINTS = [
     (re.compile(r"pressure ulcer", re.I), "pressure_ulcer"),
@@ -58,6 +60,72 @@ def _norm_lat(s: str) -> str:
 
 def collapse_dups(text: str) -> str:
     return re.sub(r"\b(\w+)\s+\1\b", r"\1", text, flags=re.I)
+
+
+def wound_identity(wound_type: str | None, location: str | None) -> str:
+    """Stable per-patient wound key = normalized wound_type|location.
+
+    Two extractions (note / assessment / diagnosis) with the same key ARE the same
+    physical wound; different keys are different wounds. Null/blank location groups
+    by type only (documented edge case — same-type wounds with no site collapse)."""
+    t = (wound_type or "unknown").strip().lower()
+    loc = re.sub(r"\s+", "_", (location or "").strip().lower())
+    return f"{t}|{loc}"
+
+
+# --- fuzzy wound clustering --------------------------------------------------
+# Exact wound_identity over-splits when a source note garbles a site ("Rightlowerle"
+# vs "Right lower leg") or leaves the type unknown ("other"). cluster_identities
+# merges near-duplicate locations / unknown types into one canonical wound.
+_UNKNOWN_TYPES = {None, "", "other", "unknown"}
+
+
+def _norm_loc(location: str | None) -> str:
+    """Compare-form of a location: lowercase, alphanumerics only (laterality is
+    already canonical via _norm_lat). 'Right lower leg' -> 'rightlowerleg'."""
+    return re.sub(r"[^a-z0-9]", "", (location or "").lower())
+
+
+def _loc_similar(a: str, b: str) -> bool:
+    if not a or not b:
+        return a == b
+    if (len(a) >= 6 and b.startswith(a)) or (len(b) >= 6 and a.startswith(b)):
+        return True  # truncation: 'rightlowerle' ⊂ 'rightlowerleg'
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
+
+
+def _type_compat(t1: str | None, t2: str | None) -> bool:
+    """Same specific type, or one side is unknown/'other' (adopts the specific one)."""
+    if t1 in _UNKNOWN_TYPES or t2 in _UNKNOWN_TYPES:
+        return True
+    return t1 == t2
+
+
+def cluster_identities(pairs) -> dict[tuple, str]:
+    """Map each (wound_type, location) pair to a CANONICAL wound_key, merging
+    near-duplicate locations / unknown types into one wound. Deterministic: seed
+    clusters from the most specific members (known type, longest location) so the
+    canonical key comes from the best-described mention."""
+    uniq = list({(p[0], p[1]) for p in pairs})
+    norm = {p: (None if p[0] in _UNKNOWN_TYPES else p[0], _norm_loc(p[1])) for p in uniq}
+    order = sorted(uniq, key=lambda p: (norm[p][0] is None, -len(norm[p][1]), str(p)))
+    clusters: list[dict] = []  # {"ctype", "nlocs":[...], "key"}
+    mapping: dict[tuple, str] = {}
+    for p in order:
+        ntype, nloc = norm[p]
+        match = next(
+            (c for c in clusters if _type_compat(ntype, c["ctype"]) and any(_loc_similar(nloc, x) for x in c["nlocs"])),
+            None,
+        )
+        if match is None:
+            clusters.append({"ctype": ntype, "nlocs": [nloc], "key": wound_identity(p[0], p[1])})
+            mapping[p] = clusters[-1]["key"]
+        else:
+            match["nlocs"].append(nloc)
+            if match["ctype"] is None and ntype is not None:
+                match["ctype"] = ntype  # adopt the specific type (canonical key unchanged)
+            mapping[p] = match["key"]
+    return mapping
 
 
 _LOOSE_STAGE = re.compile(r"\bStage\s*([1-4])\b|\b(Unstageable)\b|\b(Deep Tissue)", re.I)
@@ -125,16 +193,31 @@ def find_wounds(text: str) -> list[dict]:
             target["depth_cm"] = depth
             target["depth_span"] = (dm.start(), dm.end())
 
-    # locations (in order) -> assign to wounds positionally
-    locs = [(lm.start(), f"{_norm_lat(lm.group('lat'))} {lm.group('site').lower()}", (lm.start(), lm.end()))
+    # locations -> assign each to the NEAREST wound's measurement, globally-greedy:
+    # pair (wound, location) by ascending text distance, within a window. A location
+    # is claimed by at most one wound, and a wound with no nearby location is left
+    # null (honestly incomplete) rather than borrowing another wound's site — this is
+    # what stops two distinct wounds from being conflated into one.
+    locs = [(lm.start(), lm.end(), f"{_norm_lat(lm.group('lat'))} {lm.group('site').lower()}")
             for lm in LOC.finditer(text)]
-    for i, w in enumerate(wounds):
-        if i < len(locs):
-            w["location"] = locs[i][1]
-            w["location_span"] = locs[i][2]
-        elif locs:
-            w["location"] = locs[0][1]
-            w["location_span"] = locs[0][2]
+    LOC_WINDOW = 120
+    pairs = sorted(
+        (abs(ls - w["_dim_pos"]), wi, li)
+        for wi, w in enumerate(wounds)
+        for li, (ls, _le, _lv) in enumerate(locs)
+    )
+    w_claimed: set[int] = set()
+    l_claimed: set[int] = set()
+    for dist, wi, li in pairs:
+        if dist > LOC_WINDOW:
+            break
+        if wi in w_claimed or li in l_claimed:
+            continue
+        ls, le, lv = locs[li]
+        wounds[wi]["location"] = lv
+        wounds[wi]["location_span"] = (ls, le)
+        w_claimed.add(wi)
+        l_claimed.add(li)
 
     # stage (first occurrence applied to primary; shared otherwise)
     sm = STAGE.search(text)

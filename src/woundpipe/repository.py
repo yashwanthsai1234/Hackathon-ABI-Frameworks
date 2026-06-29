@@ -328,71 +328,67 @@ def export_json(con: sqlite3.Connection) -> dict[str, Any]:
     ``{generated_at, run_id, manifest, funnel{...,sankey}, patients[]}``.
     N+1-free: a fixed set of bulk queries, grouped in Python.
     """
-    patients = _rows(
+    # Per-WOUND eligibility — each row is one billable line (patient_id, wound_key).
+    wound_rows = _rows(
         con.execute(
             """
-            SELECT patient_id, internal_id, facility_id, first_name, last_name,
+            SELECT patient_id, wound_key, internal_id, facility_id, first_name, last_name,
                    payer_code, wound_type, stage, location,
                    length_cm, width_cm, depth_cm, drainage, confidence,
                    has_active_mcb, has_active_wound, has_active_wound_dx,
                    n_sources, n_agree, all_agree, n_conflict,
                    failed_fetches, data_complete, route, reason
-            FROM v_patient_eligibility
-            ORDER BY facility_id, patient_id
+            FROM v_wound_eligibility
+            ORDER BY facility_id, patient_id, wound_key
             """
         )
     )
 
-    # --- bulk lookups (grouped in Python; no per-patient round trips) --------
-    # primary extraction per patient (max overall_conf among is_primary rows).
-    prim_by_patient: dict[str, dict[str, Any]] = {}
+    # --- bulk lookups (grouped in Python; no per-wound round trips) ----------
+    # representative extraction row per (patient, wound_key) = max overall_conf.
+    rep_by_wound: dict[tuple, dict[str, Any]] = {}
     for row in _rows(
         con.execute(
             """
-            SELECT id, patient_id, source_note_id, source_assessment_id,
+            SELECT id, patient_id, wound_key, source_note_id, source_assessment_id,
                    extraction_method, wound_type_conf, stage_conf, location_conf,
                    measure_conf, drainage_conf, overall_conf,
                    evidence_span_start, evidence_span_end, evidence_quote
-            FROM wound_extraction
-            WHERE is_primary = 1
+            FROM wound_extraction WHERE wound_key IS NOT NULL
             """
         )
     ):
-        cur = prim_by_patient.get(row["patient_id"])
+        k = (row["patient_id"], row["wound_key"])
+        cur = rep_by_wound.get(k)
         if cur is None or (row["overall_conf"] or -1) > (cur["overall_conf"] or -1):
-            prim_by_patient[row["patient_id"]] = row
+            rep_by_wound[k] = row
 
-    # corroboration edges grouped by patient.
-    edges_by_patient: dict[str, list[dict[str, Any]]] = {}
+    # corroboration edges grouped by (patient, wound_key).
+    edges_by_wound: dict[tuple, list[dict[str, Any]]] = {}
     for e in _rows(
         con.execute(
             """
-            SELECT patient_id, evidence_node, source_note_id, source_assessment_id,
-                   extraction_id, corroborates
-            FROM v_wound_corroboration
+            SELECT patient_id, wound_key, evidence_node, source_note_id,
+                   source_assessment_id, extraction_id, corroborates
+            FROM v_wkey_corroboration
             """
         )
     ):
-        edges_by_patient.setdefault(e["patient_id"], []).append(e)
+        edges_by_wound.setdefault((e["patient_id"], e["wound_key"]), []).append(e)
 
     # per-field evidence grouped by extraction_id (migration 002; tolerate absence).
     fields_by_extraction: dict[int, list[dict[str, Any]]] = {}
-    has_wfe = con.execute(
+    if con.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='wound_field_evidence'"
-    ).fetchone()
-    if has_wfe:
+    ).fetchone():
         for f in _rows(
             con.execute(
-                """
-                SELECT extraction_id, field, char_start, char_end, quote,
-                       method, confidence
-                FROM wound_field_evidence
-                """
+                "SELECT extraction_id, field, char_start, char_end, quote, method, confidence "
+                "FROM wound_field_evidence"
             )
         ):
             fields_by_extraction.setdefault(f["extraction_id"], []).append(f)
 
-    # note_text by note id.
     note_text_by_id = {
         r["id"]: r["note_text"]
         for r in _rows(
@@ -400,97 +396,103 @@ def export_json(con: sqlite3.Connection) -> dict[str, Any]:
         )
     }
 
-    # ai summary per patient (migration 006; tolerate absence on un-migrated DBs).
-    summary_by_patient: dict[str, Any] = {}
+    # per-wound AI summary (migration 007; tolerate absence).
+    summary_by_wound: dict[tuple, Any] = {}
     if con.execute(
-        "SELECT 1 FROM pragma_table_info('pcc_patient') WHERE name = 'ai_summary'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='wound_summary'"
     ).fetchone():
-        summary_by_patient = {
-            r["patient_id"]: r["ai_summary"]
-            for r in _rows(
-                con.execute("SELECT patient_id, ai_summary FROM pcc_patient WHERE is_current = 1")
-            )
+        summary_by_wound = {
+            (r["patient_id"], r["wound_key"]): r["ai_summary"]
+            for r in _rows(con.execute("SELECT patient_id, wound_key, ai_summary FROM wound_summary"))
         }
 
-    # --- assemble patients[] -------------------------------------------------
-    out_patients: list[dict[str, Any]] = []
-    for p in patients:
-        prim = prim_by_patient.get(p["patient_id"])
-        edges = edges_by_patient.get(p["patient_id"], [])
-
-        note_text = ""
-        highlights: list[dict[str, Any]] = []
-        method = prim["extraction_method"] if prim else None
-        if prim is not None and prim.get("source_note_id") is not None:
-            note_text = note_text_by_id.get(prim["source_note_id"], "") or ""
-
-        if prim is not None:
-            field_rows = fields_by_extraction.get(prim["id"], [])
-            for fr in field_rows:
-                highlights.append(
-                    {
-                        "field": fr["field"],
-                        "start": fr["char_start"],
-                        "end": fr["char_end"],
-                        "value": fr["quote"],
-                    }
-                )
-            # Fall back to the summary span if no per-field evidence is present.
-            if not highlights and prim.get("evidence_quote") is not None:
-                highlights.append(
-                    {
-                        "field": "wound",
-                        "start": prim.get("evidence_span_start"),
-                        "end": prim.get("evidence_span_end"),
-                        "value": prim.get("evidence_quote"),
-                    }
-                )
-
+    def _wound_obj(w: dict[str, Any]) -> dict[str, Any]:
+        """One billable wound line from a v_wound_eligibility row."""
+        key = (w["patient_id"], w["wound_key"])
+        rep = rep_by_wound.get(key)
+        edges = edges_by_wound.get(key, [])
+        note_text, highlights, method = "", [], (rep["extraction_method"] if rep else None)
+        if rep and rep.get("source_note_id") is not None:
+            note_text = note_text_by_id.get(rep["source_note_id"], "") or ""
+        if rep:
+            for fr in fields_by_extraction.get(rep["id"], []):
+                highlights.append({"field": fr["field"], "start": fr["char_start"],
+                                   "end": fr["char_end"], "value": fr["quote"]})
+            if not highlights and rep.get("evidence_quote") is not None:
+                highlights.append({"field": "wound", "start": rep.get("evidence_span_start"),
+                                   "end": rep.get("evidence_span_end"), "value": rep.get("evidence_quote")})
         field_confidence = {
-            "wound_type": prim["wound_type_conf"] if prim else None,
-            "stage": prim["stage_conf"] if prim else None,
-            "location": prim["location_conf"] if prim else None,
-            "length": prim["measure_conf"] if prim else None,
-            "width": prim["measure_conf"] if prim else None,
-            "depth": prim["measure_conf"] if prim else None,
-            "drainage": prim["drainage_conf"] if prim else None,
+            "wound_type": rep["wound_type_conf"] if rep else None,
+            "stage": rep["stage_conf"] if rep else None,
+            "location": rep["location_conf"] if rep else None,
+            "length": rep["measure_conf"] if rep else None,
+            "width": rep["measure_conf"] if rep else None,
+            "depth": rep["measure_conf"] if rep else None,
+            "drainage": rep["drainage_conf"] if rep else None,
+        }
+        return {
+            "wound_key": w["wound_key"],
+            "wound": {
+                "wound_type": w["wound_type"], "stage": w["stage"], "location": w["location"],
+                "length_cm": w["length_cm"], "width_cm": w["width_cm"], "depth_cm": w["depth_cm"],
+                "drainage": w["drainage"],
+                "format": _METHOD_TO_FORMAT.get(method) if method else None,
+            },
+            "route": w["route"], "reason": w["reason"], "confidence": w["confidence"],
+            "field_confidence": field_confidence,
+            "ai_summary": summary_by_wound.get(key),
+            "note_text": note_text, "highlights": highlights,
+            "eligibility_checks": _eligibility_checks(w),
+            "evidence_graph": _evidence_graph(w, edges),
         }
 
-        out_patients.append(
-            {
-                "patient_id": p["patient_id"],
-                "internal_id": p["internal_id"],
-                "facility_id": p["facility_id"],
-                "name": " ".join(
-                    x for x in (p.get("first_name"), p.get("last_name")) if x
-                )
-                or None,
-                "payer_code": p.get("payer_code"),
-                "has_active_mcb": bool(p["has_active_mcb"]),
-                "has_active_wound": bool(p["has_active_wound"]),
-                "data_complete": bool(p["data_complete"]),
-                "failed_fetches": p["failed_fetches"],
-                "wound": {
-                    "wound_type": p["wound_type"],
-                    "stage": p["stage"],
-                    "location": p["location"],
-                    "length_cm": p["length_cm"],
-                    "width_cm": p["width_cm"],
-                    "depth_cm": p["depth_cm"],
-                    "drainage": p["drainage"],
-                    "format": _METHOD_TO_FORMAT.get(method) if method else None,
-                },
-                "route": p["route"],
-                "reason": p["reason"],
-                "confidence": p["confidence"],
-                "field_confidence": field_confidence,
-                "ai_summary": summary_by_patient.get(p["patient_id"]),
-                "note_text": note_text,
-                "highlights": highlights,
-                "eligibility_checks": _eligibility_checks(p),
-                "evidence_graph": _evidence_graph(p, edges),
-            }
+    # --- assemble patients[] with wounds[] -----------------------------------
+    patients_map: dict[str, dict[str, Any]] = {}
+    funnel_lines: list[dict[str, Any]] = []
+
+    def _patient_shell(p: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "patient_id": p["patient_id"], "internal_id": p["internal_id"],
+            "facility_id": p["facility_id"],
+            "name": " ".join(x for x in (p.get("first_name"), p.get("last_name")) if x) or None,
+            "payer_code": p.get("payer_code"), "wounds": [],
+        }
+
+    for w in wound_rows:
+        pat = patients_map.setdefault(w["patient_id"], _patient_shell(w))
+        pat["wounds"].append(_wound_obj(w))
+        funnel_lines.append(w)
+
+    # Patients with NO extractable wound still get one synthetic line (so a "no wound /
+    # no MCB" reject stays visible and every patient contributes >=1 billable line).
+    patient_rows = _rows(
+        con.execute(
+            """
+            SELECT patient_id, internal_id, facility_id, first_name, last_name, payer_code,
+                   wound_type, stage, location, length_cm, width_cm, depth_cm, drainage, confidence,
+                   has_active_mcb, has_active_wound, has_active_wound_dx,
+                   n_sources, n_agree, all_agree, n_conflict, failed_fetches, data_complete, route, reason
+            FROM v_patient_eligibility ORDER BY facility_id, patient_id
+            """
         )
+    )
+    for p in patient_rows:
+        if p["patient_id"] in patients_map:
+            continue
+        pat = _patient_shell(p)
+        pat["wounds"].append({
+            "wound_key": None,
+            "wound": {"wound_type": p["wound_type"], "stage": p["stage"], "location": p["location"],
+                      "length_cm": p["length_cm"], "width_cm": p["width_cm"], "depth_cm": p["depth_cm"],
+                      "drainage": p["drainage"], "format": None},
+            "route": p["route"], "reason": p["reason"], "confidence": p["confidence"],
+            "field_confidence": {}, "ai_summary": None, "note_text": "", "highlights": [],
+            "eligibility_checks": _eligibility_checks(p), "evidence_graph": _evidence_graph(p, []),
+        })
+        patients_map[p["patient_id"]] = pat
+        funnel_lines.append(p)
+
+    out_patients = list(patients_map.values())
 
     # --- manifest (latest run) ----------------------------------------------
     manifest = _one(
@@ -502,6 +504,6 @@ def export_json(con: sqlite3.Connection) -> dict[str, Any]:
         "generated_at": _now(),
         "run_id": run_id,
         "manifest": manifest,
-        "funnel": _build_funnel(patients),
+        "funnel": _build_funnel(funnel_lines),
         "patients": out_patients,
     }

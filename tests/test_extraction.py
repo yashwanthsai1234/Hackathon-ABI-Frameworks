@@ -7,7 +7,7 @@ from woundpipe.db import migrate
 from woundpipe.db.engine import connect
 from woundpipe.extract import engine, llm_lane
 from woundpipe.extract.sniff import detect_format, unwrap_assessment
-from woundpipe.extract.regex_lane import find_wounds, collapse_dups
+from woundpipe.extract.regex_lane import find_wounds, collapse_dups, wound_identity
 from woundpipe.models import NoteFormat
 
 
@@ -43,6 +43,70 @@ def test_persist_llm_stage_does_not_violate_check_constraint():
         stored = [r[0] for r in con.execute(
             "SELECT stage FROM wound_extraction WHERE patient_id='FA-001' ORDER BY id")]
         assert stored == ["DTI", "N/A", None]
+        con.close()
+    finally:
+        for ext in ("", "-wal", "-shm"):
+            try: os.remove(path + ext)
+            except OSError: pass
+
+
+def test_two_wound_note_segments_with_correct_per_wound_locations():
+    """The FB-006 note documents two wounds; each must keep its OWN location/size
+    (no positional borrowing) and produce a distinct wound_key."""
+    note = ("Pt seen for wound eval. Venous Left lower leg measures aprx 3.2 x 3.7cm, depth 0.4cm. "
+            "Min drainage serosanguineous. Heel wound also eval - R ankle 1.9x2.2, 0.2cm deep, slight serous.")
+    ws = find_wounds(collapse_dups(note))
+    assert len(ws) == 2
+    by_loc = {w["location"]: w for w in ws}
+    assert by_loc["Left lower leg"]["length_cm"] == 3.2 and by_loc["Left lower leg"]["width_cm"] == 3.7
+    assert by_loc["Right ankle"]["length_cm"] == 1.9 and by_loc["Right ankle"]["width_cm"] == 2.2
+    keys = {wound_identity(w.get("wound_type"), w.get("location")) for w in ws}
+    assert keys == {"venous_leg_ulcer|left_lower_leg", "venous_leg_ulcer|right_ankle"}
+
+
+def test_cluster_identities_merges_garbled_but_keeps_distinct():
+    from woundpipe.extract.regex_lane import cluster_identities
+    # garbled/unknown-type duplicate of the same site -> one wound
+    merged = cluster_identities([("other", "Rightlowerle"), ("venous_leg_ulcer", "Right lower leg")])
+    assert len(set(merged.values())) == 1
+    assert set(merged.values()) == {"venous_leg_ulcer|right_lower_leg"}
+    # genuinely different sites -> two wounds
+    assert len(set(cluster_identities([("pressure_ulcer", "Right hip"), ("pressure_ulcer", "Right heel")]).values())) == 2
+    # different SPECIFIC types at one site -> two wounds (safe, never merge across types)
+    assert len(set(cluster_identities([("venous_leg_ulcer", "Right ankle"), ("arterial_ulcer", "Right ankle")]).values())) == 2
+
+
+def test_multiwound_patient_yields_two_billable_lines():
+    """End-to-end: a two-wound note → two wound_extraction identities → two
+    independently-routed rows in v_wound_eligibility (no false conflict)."""
+    fd, path = tempfile.mkstemp(suffix=".db"); os.close(fd)
+    try:
+        con = connect(path); migrate.migrate_up(con); con.commit()
+        now = "2026-06-28T00:00:00"
+        con.execute("INSERT INTO pcc_patient (patient_id,id,facility_id,fetched_at,raw_payload)"
+                    " VALUES ('FB-006',6,102,?, '{}')", (now,))
+        con.execute("INSERT INTO pcc_coverage (id,patient_id,payer_code,effective_to,fetched_at,raw_payload)"
+                    " VALUES (1,'FB-006','MCB',NULL,?,'{}')", (now,))
+        note = ("Pt seen for wound eval. Venous Left lower leg measures aprx 3.2 x 3.7cm, depth 0.4cm. "
+                "Min drainage serosanguineous. Heel wound also eval - R ankle 1.9x2.2, 0.2cm deep, slight serous.")
+        con.execute("INSERT INTO progress_note (id,patient_id,note_text,fetched_at,raw_payload)"
+                    " VALUES (1,6,?,?,'{}')", (note, now))
+        con.commit()
+
+        s = load_settings(); s.use_llm = False  # deterministic, no network
+        engine.extract_all(con, s, full=True)
+
+        keys = sorted(r[0] for r in con.execute(
+            "SELECT DISTINCT wound_key FROM wound_extraction WHERE patient_id='FB-006' AND wound_key IS NOT NULL"))
+        assert keys == ["venous_leg_ulcer|left_lower_leg", "venous_leg_ulcer|right_ankle"]
+
+        lines = con.execute(
+            "SELECT wound_key, route, n_conflict FROM v_wound_eligibility WHERE patient_id='FB-006' ORDER BY wound_key"
+        ).fetchall()
+        assert len(lines) == 2
+        for wk, route, n_conflict in lines:
+            assert route in ("auto_accept", "flag_for_review", "reject")
+            assert n_conflict == 0  # distinct wounds are never counted as conflicting sources
         con.close()
     finally:
         for ext in ("", "-wal", "-shm"):

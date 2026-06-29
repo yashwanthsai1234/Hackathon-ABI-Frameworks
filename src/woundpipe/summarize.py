@@ -159,28 +159,29 @@ def generate(row: dict[str, Any], settings: Settings, *, use_llm: bool) -> tuple
 def backfill(
     con: sqlite3.Connection, settings: Settings, *, force: bool = False, use_llm: bool | None = None
 ) -> dict[str, int]:
-    """Fill ``pcc_patient.ai_summary`` for patients missing one (all, if ``force``).
+    """Generate one summary per WOUND missing one (all, if ``force``).
 
-    Reads facts from ``v_patient_eligibility``; writes summary + provenance back to
-    ``pcc_patient``. Idempotent without ``force``. Returns counts.
+    Reads per-wound facts from ``v_wound_eligibility``; writes summary + provenance to
+    ``wound_summary`` keyed by (patient_id, wound_key). Idempotent without ``force``.
     """
     from woundpipe.ingest.checkpoint import now_iso
 
-    # ai_summary lands in migration 006; degrade gracefully on an un-migrated DB.
+    # wound_summary lands in migration 007; degrade gracefully on an un-migrated DB.
     if not con.execute(
-        "SELECT 1 FROM pragma_table_info('pcc_patient') WHERE name = 'ai_summary'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='wound_summary'"
     ).fetchone():
-        return {"generated": 0, "llm": 0, "template": 0, "skipped": "no ai_summary column (run migrate)"}
+        return {"generated": 0, "llm": 0, "template": 0, "skipped": "no wound_summary table (run migrate)"}
 
     use_llm = settings.use_llm if use_llm is None else use_llm
-    where = "" if force else "WHERE p.ai_summary IS NULL"
+    where = "" if force else "WHERE ws.ai_summary IS NULL"
     rows = con.execute(
         f"""
         SELECT e.*
-        FROM v_patient_eligibility e
-        JOIN pcc_patient p ON p.patient_id = e.patient_id
+        FROM v_wound_eligibility e
+        LEFT JOIN wound_summary ws
+          ON ws.patient_id = e.patient_id AND ws.wound_key = e.wound_key
         {where}
-        ORDER BY e.patient_id
+        ORDER BY e.patient_id, e.wound_key
         """
     ).fetchall()
 
@@ -194,9 +195,11 @@ def backfill(
         else:
             n_llm += 1
         con.execute(
-            "UPDATE pcc_patient SET ai_summary = ?, ai_summary_model = ?, ai_summary_at = ? "
-            "WHERE patient_id = ?",
-            (text, model, now, row["patient_id"]),
+            "INSERT INTO wound_summary (patient_id, wound_key, ai_summary, ai_summary_model, ai_summary_at) "
+            "VALUES (?,?,?,?,?) ON CONFLICT(patient_id, wound_key) DO UPDATE SET "
+            "ai_summary = excluded.ai_summary, ai_summary_model = excluded.ai_summary_model, "
+            "ai_summary_at = excluded.ai_summary_at",
+            (row["patient_id"], row["wound_key"], text, model, now),
         )
     con.commit()
     return {"generated": len(rows), "llm": n_llm, "template": n_template}

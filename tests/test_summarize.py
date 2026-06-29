@@ -47,8 +47,9 @@ def test_backfill_fills_only_nulls_and_is_idempotent():
             " VALUES (1,'FA-001','MCB',NULL,?,'{}')", (now,))
         con.execute(
             "INSERT INTO wound_extraction (patient_id,source_kind,is_primary,extraction_method,"
-            "wound_type,stage,location,length_cm,width_cm,depth_cm,drainage,overall_conf,extracted_at)"
-            " VALUES ('FA-001','note',1,'regex_envive','pressure_ulcer','3','Right hip',2.9,2.8,0.4,'heavy',0.9,?)",
+            "wound_type,stage,location,length_cm,width_cm,depth_cm,drainage,overall_conf,extracted_at,wound_key)"
+            " VALUES ('FA-001','note',1,'regex_envive','pressure_ulcer','3','Right hip',2.9,2.8,0.4,'heavy',0.9,?,"
+            "'pressure_ulcer|right_hip')",
             (now,))
         con.commit()
 
@@ -56,7 +57,9 @@ def test_backfill_fills_only_nulls_and_is_idempotent():
         res1 = summarize.backfill(con, s, use_llm=False)  # deterministic, no network
         assert res1["generated"] == 1 and res1["template"] == 1
 
-        row = con.execute("SELECT ai_summary, ai_summary_model FROM pcc_patient WHERE patient_id='FA-001'").fetchone()
+        row = con.execute(
+            "SELECT ai_summary, ai_summary_model FROM wound_summary WHERE patient_id='FA-001'"
+        ).fetchone()
         assert row["ai_summary"] and len(row["ai_summary"]) > 20
         assert row["ai_summary_model"] == summarize.TEMPLATE_VERSION
 
@@ -64,7 +67,7 @@ def test_backfill_fills_only_nulls_and_is_idempotent():
         res2 = summarize.backfill(con, s, use_llm=False)
         assert res2["generated"] == 0
 
-        # force re-summarizes the (single) patient
+        # force re-summarizes the (single) wound
         res3 = summarize.backfill(con, s, use_llm=False, force=True)
         assert res3["generated"] == 1
         con.close()

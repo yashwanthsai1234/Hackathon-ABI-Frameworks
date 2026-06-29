@@ -65,38 +65,44 @@ def _frontend_manifest(raw: dict | None, funnel: dict) -> dict:
 _NODE_TYPE = {"diagnosis": "dx", "note": "note", "assessment": "assessment", "wound": "wound"}
 
 
-def _adapt_patient(p: dict) -> dict:
-    """Map the backend export shape to the frontend's types.ts contract."""
-    g = p.get("evidence_graph") or {"nodes": [], "edges": []}
+def _adapt_wound(w: dict) -> dict:
+    """One billable wound line in the frontend's types.ts contract."""
+    g = w.get("evidence_graph") or {"nodes": [], "edges": []}
     nodes = [{"id": n["id"], "type": _NODE_TYPE.get(n.get("kind"), n.get("kind", "wound")),
               "label": n.get("label", "")} for n in g.get("nodes", [])]
     edges = [{"id": f'{e["source"]}__{e["target"]}', "source": e["source"], "target": e["target"],
               "relation": e.get("relation", "agree"), "field": e.get("field")} for e in g.get("edges", [])]
     checks = [{"label": c.get("label", ""), "code": c.get("code"),
                "status": "pass" if c.get("ok") else "fail", "detail": c.get("detail", "")}
-              for c in (p.get("eligibility_checks") or [])]
-    w = p.get("wound") or {}
+              for c in (w.get("eligibility_checks") or [])]
+    wd = w.get("wound") or {}
+    return {
+        "wound_key": w.get("wound_key"),
+        "wound": {
+            "type": wd.get("wound_type"), "stage": wd.get("stage"), "location": wd.get("location"),
+            "L": wd.get("length_cm"), "W": wd.get("width_cm"), "D": wd.get("depth_cm"),
+            "drainage": wd.get("drainage"), "format": wd.get("format", ""),
+        },
+        "route": w.get("route"),
+        "reason": w.get("reason", ""),
+        "confidence": w.get("confidence") or 0,
+        "field_confidence": w.get("field_confidence") or {},
+        "ai_summary": w.get("ai_summary"),
+        "note_text": w.get("note_text") or "",
+        "highlights": w.get("highlights") or [],
+        "eligibility_checks": checks,
+        "evidence_graph": {"nodes": nodes, "edges": edges},
+    }
+
+
+def _adapt_patient(p: dict) -> dict:
+    """Map the backend export shape to the frontend's types.ts contract (wounds[])."""
     return {
         "patient_id": p.get("patient_id"),
         "id": p.get("internal_id"),
         "name": p.get("name", ""),
         "payer": p.get("payer_code"),
-        "wound": {
-            "type": w.get("wound_type"), "stage": w.get("stage"), "location": w.get("location"),
-            "L": w.get("length_cm"), "W": w.get("width_cm"), "D": w.get("depth_cm"),
-            "drainage": w.get("drainage"), "format": w.get("format", ""),
-        },
-        "route": p.get("route"),
-        "confidence": p.get("confidence") or 0,
-        "field_confidence": p.get("field_confidence") or {},
-        "ai_summary": p.get("ai_summary"),
-        "reason": p.get("reason", ""),
-        "data_complete": p.get("data_complete", True),
-        "failed_fetches": p.get("failed_fetches", 0),
-        "note_text": p.get("note_text") or "",
-        "highlights": p.get("highlights") or [],
-        "eligibility_checks": checks,
-        "evidence_graph": {"nodes": nodes, "edges": edges},
+        "wounds": [_adapt_wound(w) for w in (p.get("wounds") or [])],
     }
 
 
