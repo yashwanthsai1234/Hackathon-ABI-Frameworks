@@ -53,11 +53,9 @@ export interface EvidenceGraph {
   agreeing_sources: number;
 }
 
-export interface Patient {
-  patient_id: string;
-  id: number;
-  name: string;
-  payer: Payer;
+// One wound = one billable line, routed and decided on its own.
+export interface WoundLine {
+  wound_key: string | null;
   wound: Wound;
   route: Route;
   confidence: number;
@@ -68,6 +66,21 @@ export interface Patient {
   highlights: Highlight[];
   eligibility_checks: EligibilityCheck[];
   evidence_graph: EvidenceGraph;
+}
+
+export interface Patient {
+  patient_id: string;
+  id: number;
+  name: string;
+  payer: Payer;
+  wounds: WoundLine[];
+}
+
+// Flattened claim line — the unit the queue and detail panel operate on.
+export interface ClaimLine {
+  lineId: string; // `${patient_id}|${wound_key ?? "none"}`
+  patient: Patient; // back-ref for name/payer/sibling wounds
+  wound: WoundLine;
 }
 
 export interface Stage {

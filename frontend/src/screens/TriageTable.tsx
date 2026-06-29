@@ -10,30 +10,29 @@ import {
   type ColumnFiltersState,
 } from "@tanstack/react-table";
 import { Search, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import type { Patient, Route } from "../types";
+import type { ClaimLine, Route } from "../types";
 import type { DecisionMap, Decision } from "../data/useDecisions";
 import { GlassCard, FadeIn, EmptyState } from "../components/ui/Primitives";
 import { RouteBadge } from "../components/ui/RouteBadge";
 import { DecisionButtons } from "../components/ui/DecisionButtons";
 import { ROUTE_META, ROUTE_ORDER, fmtMeasure, matchStrength } from "../lib/route";
 
-const col = createColumnHelper<Patient>();
+const col = createColumnHelper<ClaimLine>();
 
 export function ReviewQueue({
-  patients,
+  lines,
   onSelect,
   decisions,
   onDecide,
   onClear,
 }: {
-  patients: Patient[];
-  onSelect: (p: Patient) => void;
+  lines: ClaimLine[];
+  onSelect: (l: ClaimLine) => void;
   decisions: DecisionMap;
-  onDecide: (patientId: string, decision: Decision) => void;
-  onClear: (patientId: string) => void;
+  onDecide: (lineId: string, decision: Decision) => void;
+  onClear: (lineId: string) => void;
 }) {
   const [globalFilter, setGlobalFilter] = useState("");
-  // Billers land on the claims that actually need a person.
   const [sorting, setSorting] = useState<SortingState>([{ id: "status", desc: false }]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([{ id: "status", value: "flag_for_review" }]);
   const [hideDone, setHideDone] = useState(false);
@@ -41,28 +40,36 @@ export function ReviewQueue({
   const routeFilter = (columnFilters.find((f) => f.id === "status")?.value as Route | undefined) ?? null;
   const setRoute = (r: Route | null) => setColumnFilters(r ? [{ id: "status", value: r }] : []);
 
-  // Hide-completed is applied to the source list (decisions are reactive).
   const data = useMemo(
-    () => (hideDone ? patients.filter((p) => !decisions[p.patient_id]) : patients),
-    [patients, hideDone, decisions],
+    () => (hideDone ? lines.filter((l) => !decisions[l.lineId]) : lines),
+    [lines, hideDone, decisions],
   );
 
   const columns = useMemo(
     () => [
-      col.accessor("patient_id", {
+      col.accessor((l) => l.patient.patient_id, {
+        id: "patient",
         header: "Patient",
-        cell: (c) => (
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-ink">{c.row.original.name}</span>
-            <span className="tabular text-xs text-ink-soft">{c.getValue()}</span>
-          </div>
-        ),
+        cell: (c) => {
+          const l = c.row.original;
+          const total = l.patient.wounds.length;
+          const idx = l.patient.wounds.indexOf(l.wound) + 1;
+          return (
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-ink">{l.patient.name}</span>
+              <span className="tabular text-xs text-ink-soft">
+                {l.patient.patient_id}
+                {total > 1 && <span className="text-ink-faint"> · wound {idx} of {total}</span>}
+              </span>
+            </div>
+          );
+        },
       }),
-      col.accessor((r) => r.wound.type, {
+      col.accessor((l) => l.wound.wound.type ?? "", {
         id: "wound",
         header: "Billing for",
         cell: (c) => {
-          const w = c.row.original.wound;
+          const w = c.row.original.wound.wound;
           const m = fmtMeasure(w.L, w.W, w.D);
           return (
             <div className="flex flex-col">
@@ -76,7 +83,7 @@ export function ReviewQueue({
           );
         },
       }),
-      col.accessor((r) => r.payer.code, {
+      col.accessor((l) => l.patient.payer.code, {
         id: "payer",
         header: "Insurance",
         cell: (c) => {
@@ -87,36 +94,37 @@ export function ReviewQueue({
                 isMcb ? "bg-teal-50 text-teal-700 ring-teal-600/20" : "bg-slate-100 text-slate-600 ring-slate-400/20"
               }`}
             >
-              {c.row.original.payer.name}
+              {c.row.original.patient.payer.name}
             </span>
           );
         },
       }),
-      col.accessor("route", {
+      col.accessor((l) => l.wound.route, {
         id: "status",
         header: "Status",
         cell: (c) => {
-          const ms = matchStrength(c.row.original.confidence);
+          const ms = matchStrength(c.row.original.wound.confidence);
           return (
             <div className="flex flex-col items-start gap-1">
-              <RouteBadge route={c.getValue()} size="sm" />
+              <RouteBadge route={c.getValue() as Route} size="sm" />
               <span className="text-[11px] text-ink-faint">{ms.label}</span>
             </div>
           );
         },
         filterFn: (row, id, val) => row.getValue(id) === val,
-        sortingFn: (a, b) => ROUTE_ORDER.indexOf(a.original.route) - ROUTE_ORDER.indexOf(b.original.route),
+        sortingFn: (a, b) => ROUTE_ORDER.indexOf(a.original.wound.route) - ROUTE_ORDER.indexOf(b.original.wound.route),
       }),
-      col.accessor("reason", {
+      col.accessor((l) => l.wound.reason, {
+        id: "reason",
         header: "Why",
         enableSorting: false,
-        cell: (c) => <span className="line-clamp-2 max-w-xs text-xs text-ink-soft">{c.getValue()}</span>,
+        cell: (c) => <span className="line-clamp-2 max-w-xs text-xs text-ink-soft">{c.getValue() as string}</span>,
       }),
       col.display({
         id: "decision",
         header: "Your decision",
         cell: (c) => {
-          const id = c.row.original.patient_id;
+          const id = c.row.original.lineId;
           return (
             <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
               <DecisionButtons
@@ -138,12 +146,14 @@ export function ReviewQueue({
     data,
     columns,
     state: { sorting, globalFilter, columnFilters },
+    getRowId: (l) => l.lineId,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
     globalFilterFn: (row, _id, filter) => {
-      const p = row.original;
-      const hay = `${p.patient_id} ${p.name} ${p.wound.type} ${p.wound.location} ${p.payer.name} ${p.reason}`.toLowerCase();
+      const l = row.original;
+      const w = l.wound.wound;
+      const hay = `${l.patient.patient_id} ${l.patient.name} ${w.type ?? ""} ${w.location ?? ""} ${l.patient.payer.name} ${l.wound.reason}`.toLowerCase();
       return hay.includes(String(filter).toLowerCase());
     },
     getCoreRowModel: getCoreRowModel(),
@@ -152,8 +162,11 @@ export function ReviewQueue({
   });
 
   const rows = table.getRowModel().rows;
-  const counts = ROUTE_ORDER.reduce<Record<string, number>>((a, r) => ((a[r] = patients.filter((p) => p.route === r).length), a), {});
-  const decidedHere = rows.filter((r) => decisions[r.original.patient_id]).length;
+  const counts = ROUTE_ORDER.reduce<Record<string, number>>(
+    (a, r) => ((a[r] = lines.filter((l) => l.wound.route === r).length), a),
+    {},
+  );
+  const decidedHere = rows.filter((r) => decisions[r.original.lineId]).length;
 
   return (
     <div className="space-y-4">
@@ -163,13 +176,13 @@ export function ReviewQueue({
             <h1 className="text-2xl font-bold tracking-tight gradient-text">Claims to review</h1>
             <p className="mt-1 text-sm text-ink-soft">
               Showing <span className="tabular font-medium text-ink">{rows.length}</span>{" "}
-              {rows.length === 1 ? "claim" : "claims"}
+              {rows.length === 1 ? "wound" : "wounds"} to bill
               {decidedHere > 0 && (
                 <>
                   {" "}· <span className="tabular font-medium text-teal-700">{decidedHere}</span> decided
                 </>
               )}{" "}
-              · click any row to see the full chart
+              · each wound is its own billable line — click a row for the full chart
             </p>
           </div>
           <label className="relative">
@@ -187,7 +200,7 @@ export function ReviewQueue({
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-          <FilterChip active={routeFilter === null} onClick={() => setRoute(null)} label="All claims" count={patients.length} tone="bg-ink" />
+          <FilterChip active={routeFilter === null} onClick={() => setRoute(null)} label="All wounds" count={lines.length} tone="bg-ink" />
           {ROUTE_ORDER.map((r) => {
             const m = ROUTE_META[r];
             return (
@@ -246,13 +259,13 @@ export function ReviewQueue({
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const decided = decisions[row.original.patient_id];
+                  const decided = decisions[row.original.lineId];
                   return (
                     <tr
                       key={row.id}
                       tabIndex={0}
                       role="button"
-                      aria-label={`Open ${row.original.name} — ${ROUTE_META[row.original.route].label}`}
+                      aria-label={`Open ${row.original.patient.name} — ${ROUTE_META[row.original.wound.route].label}`}
                       onClick={() => onSelect(row.original)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -277,10 +290,10 @@ export function ReviewQueue({
           </div>
           {rows.length === 0 && (
             <EmptyState
-              title={hideDone ? "All caught up" : "No matching claims"}
+              title={hideDone ? "All caught up" : "No matching wounds"}
               hint={
                 hideDone
-                  ? "You've made a decision on every claim in this filter. Uncheck “Hide ones I've decided” to see them again."
+                  ? "You've made a decision on every wound in this filter. Uncheck “Hide ones I've decided” to see them again."
                   : "Try clearing the search or choosing a different status above."
               }
             />

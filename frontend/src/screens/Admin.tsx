@@ -36,7 +36,7 @@ export function Admin({ data }: { data: ExportData }) {
 
       {/* headline metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        <Kpi label="Patients" value={funnel.total} Icon={Users} delay={0.02} />
+        <Kpi label="Wound lines" value={funnel.total} Icon={Users} delay={0.02} />
         <Kpi label="Extracted" value={extracted} Icon={Activity} delay={0.05} />
         <Kpi label="MCB eligible" value={mcbShare} suffix="%" Icon={ShieldCheck} delay={0.08} />
         <Kpi label="Ready to bill" value={funnel.auto_accept} Icon={CheckCircle2} accent="text-teal-700" delay={0.11} />

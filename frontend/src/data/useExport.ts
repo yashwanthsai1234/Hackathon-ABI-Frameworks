@@ -1,6 +1,18 @@
 import { useEffect, useState } from "react";
-import type { ExportData, Patient, Payer } from "../types";
+import type { ClaimLine, ExportData, Patient, Payer } from "../types";
 import { payerName } from "../lib/route";
+
+// Flatten patients[].wounds[] into one claim line per wound — the unit the queue
+// and detail panel operate on. lineId is stable for localStorage decisions.
+export function flattenLines(data: ExportData): ClaimLine[] {
+  const lines: ClaimLine[] = [];
+  for (const p of data.patients) {
+    for (const w of p.wounds ?? []) {
+      lines.push({ lineId: `${p.patient_id}|${w.wound_key ?? "none"}`, patient: p, wound: w });
+    }
+  }
+  return lines;
+}
 
 // The export contract says payer is an object, but some runs emit just the code
 // string ("MCB"). Normalize both shapes to a full Payer so the whole UI can rely

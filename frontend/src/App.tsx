@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { ClipboardList, LayoutDashboard, Wrench, Activity } from "lucide-react";
-import { useExport } from "./data/useExport";
+import { useExport, flattenLines } from "./data/useExport";
 import { useDecisions } from "./data/useDecisions";
-import type { Patient } from "./types";
+import type { ClaimLine } from "./types";
 import { ErrorState, EmptyState, GlassCard } from "./components/ui/Primitives";
 import { Overview } from "./screens/Overview";
 import { ReviewQueue, TriageTableSkeleton } from "./screens/TriageTable";
@@ -21,7 +21,8 @@ export default function App() {
   const runId = state.status === "ready" ? state.data.run_id : "";
   const { decisions, set, clear, counts } = useDecisions(runId);
   const [tab, setTab] = useState<Tab>("triage");
-  const [selected, setSelected] = useState<Patient | null>(null);
+  const [selected, setSelected] = useState<ClaimLine | null>(null);
+  const lines = state.status === "ready" ? flattenLines(state.data) : [];
 
   // hash-based deep links so a tab is shareable/restorable without a router dep.
   useEffect(() => {
@@ -94,7 +95,7 @@ export default function App() {
         {state.status === "ready" && (
           <>
             {tab === "triage" && (
-              <ReviewQueue patients={state.data.patients} onSelect={setSelected} decisions={decisions} onDecide={set} onClear={clear} />
+              <ReviewQueue lines={lines} onSelect={setSelected} decisions={decisions} onDecide={set} onClear={clear} />
             )}
             {tab === "overview" && <Overview data={state.data} decided={counts.decided} onStartReviewing={() => go("triage")} />}
             {tab === "admin" && <Admin data={state.data} />}
@@ -103,9 +104,11 @@ export default function App() {
       </main>
 
       <PatientDetail
-        patient={selected}
+        line={selected}
+        lines={lines}
+        onSelect={setSelected}
         onClose={() => setSelected(null)}
-        decision={selected ? decisions[selected.patient_id] : undefined}
+        decision={selected ? decisions[selected.lineId] : undefined}
         onDecide={set}
         onClear={clear}
       />

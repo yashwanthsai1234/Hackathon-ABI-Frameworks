@@ -25,7 +25,7 @@ export function Overview({
               <span className="gradient-text">Today's billing</span>
             </h1>
             <p className="mt-1 text-sm text-ink-soft">
-              <span className="tabular font-medium text-ink">{total}</span> claims came in from the latest patient charts. Here's where they stand.
+              <span className="tabular font-medium text-ink">{total}</span> billable wound lines from the latest patient charts. Here's where they stand.
             </p>
           </div>
           <button

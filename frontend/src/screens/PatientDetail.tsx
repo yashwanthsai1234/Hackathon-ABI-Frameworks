@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X, Check, AlertTriangle, XCircle, FileText, Users, AlertCircle, Sparkles } from "lucide-react";
-import type { Patient, CheckStatus } from "../types";
+import { X, Check, AlertTriangle, XCircle, FileText, Users, AlertCircle, Sparkles, Loader2 } from "lucide-react";
+import type { ClaimLine, CheckStatus } from "../types";
 import type { Decision } from "../data/useDecisions";
+import { useWoundSummary } from "../data/useWoundSummary";
 import { RouteBadge } from "../components/ui/RouteBadge";
 import { DecisionButtons } from "../components/ui/DecisionButtons";
 import { HighlightedNote, fieldTone, fieldLabel } from "../components/HighlightedNote";
@@ -23,17 +24,21 @@ const CHECK_ICON: Record<CheckStatus, { Icon: typeof Check; cls: string }> = {
 };
 
 export function PatientDetail({
-  patient,
+  line,
+  lines,
+  onSelect,
   onClose,
   decision,
   onDecide,
   onClear,
 }: {
-  patient: Patient | null;
+  line: ClaimLine | null;
+  lines: ClaimLine[];
+  onSelect: (l: ClaimLine) => void;
   onClose: () => void;
   decision: Decision | undefined;
-  onDecide: (patientId: string, decision: Decision) => void;
-  onClear: (patientId: string) => void;
+  onDecide: (lineId: string, decision: Decision) => void;
+  onClear: (lineId: string) => void;
 }) {
   const reduce = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -41,7 +46,7 @@ export function PatientDetail({
 
   // focus management: move focus into the panel on open, restore on close, trap Esc.
   useEffect(() => {
-    if (!patient) return;
+    if (!line) return;
     const prev = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
@@ -54,16 +59,20 @@ export function PatientDetail({
       document.body.style.overflow = "";
       prev?.focus();
     };
-  }, [patient, onClose]);
+  }, [line, onClose]);
 
-  const ms = patient ? matchStrength(patient.confidence) : null;
-  const conflicts = patient ? patient.evidence_graph.edges.filter((e) => e.relation === "conflict").length : 0;
-  const agree = patient?.evidence_graph.agreeing_sources ?? 0;
+  const p = line?.patient ?? null;
+  const w = line?.wound ?? null;
+  const ms = w ? matchStrength(w.confidence) : null;
+  const conflicts = w ? w.evidence_graph.edges.filter((e) => e.relation === "conflict").length : 0;
+  const agree = w?.evidence_graph.agreeing_sources ?? 0;
+  const siblings = line && p ? lines.filter((l) => l.patient.patient_id === p.patient_id) : [];
+  const aiSummary = useWoundSummary(line); // lazily generated on open via the serve backend
 
   return (
     <AnimatePresence>
-      {patient && ms && (
-        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`Claim for ${patient.name}`}>
+      {line && p && w && ms && (
+        <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={`Claim for ${p.name}`}>
           <motion.div
             className="absolute inset-0 bg-ink/25"
             initial={reduce ? false : { opacity: 0 }}
@@ -83,16 +92,16 @@ export function PatientDetail({
               <header className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-xl font-bold text-ink">{patient.name}</h2>
-                    <span className="tabular text-sm text-ink-soft">{patient.patient_id}</span>
+                    <h2 className="text-xl font-bold text-ink">{p.name}</h2>
+                    <span className="tabular text-sm text-ink-soft">{p.patient_id}</span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <RouteBadge route={patient.route} />
+                    <RouteBadge route={w.route} />
                     <span className="rounded-md bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-700 ring-1 ring-teal-600/20">
-                      {patient.payer.name}
+                      {p.payer.name}
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs text-ink-soft">
-                      <FileText className="h-3 w-3" aria-hidden="true" /> {patient.wound.format}
+                      <FileText className="h-3 w-3" aria-hidden="true" /> {w.wound.format}
                     </span>
                   </div>
                 </div>
@@ -106,6 +115,34 @@ export function PatientDetail({
                 </button>
               </header>
 
+              {/* wound switcher — this patient has more than one billable wound */}
+              {siblings.length > 1 && (
+                <section className="mt-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">
+                    This patient has {siblings.length} wounds — pick one
+                  </span>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {siblings.map((s) => {
+                      const active = s.lineId === line.lineId;
+                      const loc = s.wound.wound.location ?? "Location not noted";
+                      return (
+                        <button
+                          key={s.lineId}
+                          onClick={() => onSelect(s)}
+                          aria-pressed={active}
+                          className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 ${
+                            active ? "bg-ink text-white" : "border border-border bg-surface text-ink-soft hover:text-ink"
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${ROUTE_META[s.wound.route].dot}`} />
+                          {loc}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
               {/* AI summary — the human-readable overview, shown first */}
               <section className="mt-5 rounded-xl border border-ink/15 bg-surface p-4 shadow-glass">
                 <div className="mb-1.5 flex items-center gap-1.5">
@@ -114,10 +151,24 @@ export function PatientDetail({
                   </span>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">AI summary</span>
                 </div>
-                {patient.ai_summary ? (
-                  <p className="text-sm leading-relaxed text-ink">{patient.ai_summary}</p>
-                ) : (
-                  <p className="text-sm italic text-ink-faint">No summary yet for this patient.</p>
+                {(aiSummary.status === "loading" || aiSummary.status === "idle") && (
+                  <p className="flex items-center gap-2 text-sm italic text-ink-faint">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Generating summary…
+                  </p>
+                )}
+                {aiSummary.status === "ready" && aiSummary.summary && (
+                  <p className="text-sm leading-relaxed text-ink">{aiSummary.summary}</p>
+                )}
+                {aiSummary.status === "ready" && !aiSummary.summary && (
+                  <p className="text-sm italic text-ink-faint">No summary for this line.</p>
+                )}
+                {aiSummary.status === "error" && (
+                  <p className="text-sm text-ink-soft">
+                    Couldn't generate a summary (is the summary service running?).{" "}
+                    <button onClick={aiSummary.retry} className="font-medium text-ink underline focus-visible:outline-2">
+                      Retry
+                    </button>
+                  </p>
                 )}
               </section>
 
@@ -127,15 +178,15 @@ export function PatientDetail({
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-faint">What the system suggests</span>
                   <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ring-1 ${ms.tone} ${ms.ring}`}>{ms.label}</span>
                 </div>
-                <p className="mt-2 text-base font-semibold text-ink">{ROUTE_META[patient.route].label}</p>
-                <p className="mt-1 text-sm leading-snug text-ink-soft">{patient.reason}</p>
+                <p className="mt-2 text-base font-semibold text-ink">{ROUTE_META[w.route].label}</p>
+                <p className="mt-1 text-sm leading-snug text-ink-soft">{w.reason}</p>
               </section>
 
               {/* billing requirements */}
               <section className="mt-5">
                 <h3 className="mb-2 text-sm font-semibold text-ink">Billing requirements</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {patient.eligibility_checks.map((c, i) => {
+                  {w.eligibility_checks.map((c, i) => {
                     const { Icon, cls } = CHECK_ICON[c.status];
                     return (
                       <div key={i} className="glass flex items-start gap-2.5 rounded-xl p-3">
@@ -170,10 +221,10 @@ export function PatientDetail({
               <section className="mt-5">
                 <h3 className="mb-2 text-sm font-semibold text-ink">Wound details</h3>
                 <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Field label="Type" value={patient.wound.type ? patient.wound.type.replace(/_/g, " ") : null} />
-                  <Field label="Location" value={patient.wound.location} />
-                  <Field label="Stage" value={patient.wound.stage} />
-                  <Field label="Size (L×W×D)" value={fmtMeasure(patient.wound.L, patient.wound.W, patient.wound.D)} mono />
+                  <Field label="Type" value={w.wound.type ? w.wound.type.replace(/_/g, " ") : null} />
+                  <Field label="Location" value={w.wound.location} />
+                  <Field label="Stage" value={w.wound.stage} />
+                  <Field label="Size (L×W×D)" value={fmtMeasure(w.wound.L, w.wound.W, w.wound.D)} mono />
                 </dl>
               </section>
 
@@ -198,14 +249,14 @@ export function PatientDetail({
                   <h3 className="text-sm font-semibold text-ink">Original note — matched details highlighted</h3>
                 </div>
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                  {Array.from(new Set(patient.highlights.map((h) => h.field))).map((f) => (
+                  {Array.from(new Set(w.highlights.map((h) => h.field))).map((f) => (
                     <span key={f} className={`rounded px-1.5 py-0.5 text-[10px] font-medium ring-1 ${fieldTone(f)}`}>
                       {fieldLabel(f)}
                     </span>
                   ))}
                 </div>
                 <div className="glass rounded-xl p-4">
-                  <HighlightedNote text={patient.note_text} highlights={patient.highlights} />
+                  <HighlightedNote text={w.note_text} highlights={w.highlights} />
                 </div>
               </section>
             </div>
@@ -214,16 +265,16 @@ export function PatientDetail({
             <footer className="flex items-center justify-between gap-3 border-t border-border bg-surface px-6 py-4">
               <span className="text-sm font-medium text-ink-soft">
                 {decision === "approved"
-                  ? "You approved this claim."
+                  ? "You approved this wound."
                   : decision === "rejected"
-                    ? "You sent this claim back."
+                    ? "You sent this wound back."
                     : "Approve to bill, or send it back."}
               </span>
               <DecisionButtons
                 decision={decision}
-                onApprove={() => onDecide(patient.patient_id, "approved")}
-                onReject={() => onDecide(patient.patient_id, "rejected")}
-                onClear={() => onClear(patient.patient_id)}
+                onApprove={() => onDecide(line.lineId, "approved")}
+                onReject={() => onDecide(line.lineId, "rejected")}
+                onClear={() => onClear(line.lineId)}
               />
             </footer>
           </motion.div>
