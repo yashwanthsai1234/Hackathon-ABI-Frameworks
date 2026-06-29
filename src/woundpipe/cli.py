@@ -198,6 +198,18 @@ def publish(db: str = typer.Option("data/woundpipe.db", "--db"),
 
 
 @app.command()
+def serve(db: str = typer.Option("data/woundpipe.db", "--db"),
+          host: str = typer.Option("127.0.0.1", "--host"),
+          port: int = typer.Option(8787, "--port")):
+    """Run the on-demand summary API the dashboard calls when a wound is opened."""
+    import uvicorn
+    from woundpipe import api
+    api.configure(db)
+    typer.secho(f"[serve] summary API on http://{host}:{port}  (db={db})", fg="green")
+    uvicorn.run(api.app, host=host, port=port, log_level="warning")
+
+
+@app.command()
 def run_all(db: str = typer.Option("data/woundpipe.db", "--db"),
             facilities: str = typer.Option("101,102,103", "--facilities"),
             since: str = typer.Option(None, "--since"),
@@ -207,8 +219,9 @@ def run_all(db: str = typer.Option("data/woundpipe.db", "--db"),
     ingest(db=db, facilities=facilities, since=since, limit=limit)
     extract(db=db)
     route(db=db)
-    summarize(db=db, full=False)
     publish(db=db, out="data/export.json", frontend="frontend/public/export.json")
+    # AI summaries are generated on demand by `woundpipe serve` (per-wound, on click),
+    # not pre-baked here. Run `woundpipe summarize` to optionally warm the cache.
     typer.secho("[run-all] pipeline complete.", fg="green", bold=True)
 
 
